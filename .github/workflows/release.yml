@@ -34,7 +34,7 @@ jobs:
       - name: Generate debug keystore (test signing)
         run: |
           keytool -genkey -v \
-            -keystore ./booming_keystore.jks \
+            -keystore app/booming_keystore.jks \
             -alias booming \
             -keyalg RSA \
             -keysize 2048 \
@@ -43,7 +43,7 @@ jobs:
             -keypass android \
             -dname "CN=BoomingMusic, O=Test, C=US"
           cat > ./keystore.properties <<EOF
-          storeFile=./booming_keystore.jks
+          storeFile=booming_keystore.jks
           storePassword=android
           keyAlias=booming
           keyPassword=android
