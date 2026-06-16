@@ -454,6 +454,9 @@ object Preferences : KoinComponent {
         get() = preferences.getBoolean(SWIPE_ANYWHERE, false)
         set(value) = preferences.edit { putBoolean(SWIPE_ANYWHERE, value) }
 
+    val useMillerShuffle: Boolean
+        get() = preferences.getBoolean(USE_MILLER_SHUFFLE, false)
+
     var isSwipeUpQueue: Boolean
         get() = preferences.getBoolean(SWIPE_UP_QUEUE, false)
         set(value) = preferences.edit { putBoolean(SWIPE_UP_QUEUE, value) }
@@ -646,3 +649,4 @@ const val LOCKED_PLAYLISTS = "locked_playlists"
 const val QUEUE_HEIGHT = "queue_height"
 const val LASTFM_LOGIN = "lastfm_login"
 const val LISTENBRAINZ_LOGIN = "listenbrainz_login"
+const val USE_MILLER_SHUFFLE = "use_miller_shuffle"

@@ -170,36 +170,58 @@ class PersistentStorage(
                 val repeatMode = preferences.getInt(REPEAT_MODE, Player.REPEAT_MODE_OFF)
                 val shuffleModeEnabled = preferences.getBoolean(SHUFFLE_MODE, false)
 
-                // Load serialized shuffle order
-                val serializedOrder = preferences.getString(SHUFFLE_ORDER, null)?.let {
+                // Load serialized shuffle order (supports both ImprovedShuffleOrder and MillerShuffleOrder)
+                val savedOrderType = preferences.getString(SHUFFLE_ORDER_TYPE, null)
+                val savedOrderJson = preferences.getString(SHUFFLE_ORDER, null)
+
+                val shuffleOrderRestored: ShuffleOrder? = if (shuffleModeEnabled && savedOrderJson != null) {
                     try {
-                        SerializedOrder.serializedFromJson(it)
+                        when (savedOrderType) {
+                            ORDER_TYPE_MILLER -> {
+                                val millerSerialized = MillerShuffleOrder.SerializedOrder.fromJson(savedOrderJson)
+                                if (millerSerialized.length == items.mediaItems.size) {
+                                    millerSerialized.toShuffleOrder()
+                                } else {
+                                    Log.e(TAG, "Saved Miller shuffle order size mismatch – discarding")
+                                    preferences.edit(commit = true) {
+                                        putString(SHUFFLE_ORDER, null)
+                                        putString(SHUFFLE_ORDER_TYPE, null)
+                                    }
+                                    null
+                                }
+                            }
+                            else -> {
+                                // Legacy ImprovedShuffleOrder path
+                                val improved = SerializedOrder.serializedFromJson(savedOrderJson)
+                                val data = improved.data
+                                if (data == null || items.mediaItems.size != data.size) {
+                                    Log.e(TAG, "Previous shuffle order is no longer valid")
+                                    preferences.edit(commit = true) {
+                                        putString(SHUFFLE_ORDER, null)
+                                        putString(SHUFFLE_ORDER_TYPE, null)
+                                    }
+                                    null
+                                } else {
+                                    improved.toShuffleOrder(
+                                        firstIndex = items.startIndex,
+                                        length = items.mediaItems.size
+                                    )
+                                }
+                            }
+                        }
                     } catch (e: SerializationException) {
-                        Log.e(TAG, "Couldn't deserialize saved shuffle order: $it", e)
+                        Log.e(TAG, "Couldn't deserialize saved shuffle order", e)
                         null
                     }
-                }
-
-                val shuffleOrder = if (shuffleModeEnabled) {
-                    if (serializedOrder != null) {
-                        val data = serializedOrder.data
-                        if (data == null || items.mediaItems.size != data.size) {
-                            Log.e(TAG, "Previous shuffle order is no longer valid")
-                            preferences.edit(commit = true) { putString(SHUFFLE_ORDER, null) }
-                            null
-                        } else {
-                            serializedOrder.toShuffleOrder(
-                                firstIndex = items.startIndex,
-                                length = items.mediaItems.size
-                            )
-                        }
-                    } else {
-                        ShuffleOrder.UnshuffledShuffleOrder(items.mediaItems.size)
-                    }
+                } else if (shuffleModeEnabled) {
+                    ShuffleOrder.UnshuffledShuffleOrder(items.mediaItems.size)
                 } else {
-                    if (serializedOrder != null) {
+                    if (savedOrderJson != null) {
                         Log.e(TAG, "Found orphan shuffle order")
-                        preferences.edit(commit = true) { putString(SHUFFLE_ORDER, null) }
+                        preferences.edit(commit = true) {
+                            putString(SHUFFLE_ORDER, null)
+                            putString(SHUFFLE_ORDER_TYPE, null)
+                        }
                     }
                     null
                 }
@@ -207,9 +229,9 @@ class PersistentStorage(
                 withContext(Dispatchers.Main) {
                     // Apply repeat/shuffle modes on main thread
                     player.repeatMode = repeatMode
-                    player.shuffleModeEnabled = shuffleModeEnabled && shuffleOrder != null
+                    player.shuffleModeEnabled = shuffleModeEnabled && shuffleOrderRestored != null
 
-                    dispatchItems(callback, items, shuffleOrder)
+                    dispatchItems(callback, items, shuffleOrderRestored)
                 }
             }
         } catch (t: Throwable) {
@@ -252,9 +274,13 @@ class PersistentStorage(
                 val position = player.currentMediaItemIndex
                 val positionInTrack = player.currentPosition
                 val mediaItems = player.mediaItems
-                val shuffleOrder = when (val shuffleOrder = player.exoPlayer.shuffleOrder) {
-                    is ImprovedShuffleOrder -> SerializedOrder.serializedFromOrder(shuffleOrder)
-                    else -> null
+                val shuffleOrder = player.exoPlayer.shuffleOrder
+                val (shuffleOrderJson, shuffleOrderType) = when (shuffleOrder) {
+                    is MillerShuffleOrder ->
+                        MillerShuffleOrder.SerializedOrder.from(shuffleOrder).toString() to ORDER_TYPE_MILLER
+                    is ImprovedShuffleOrder ->
+                        SerializedOrder.serializedFromOrder(shuffleOrder).toString() to ORDER_TYPE_IMPROVED
+                    else -> null to null
                 }
 
                 // Write state asynchronously
@@ -263,7 +289,8 @@ class PersistentStorage(
                         preferences.edit(commit = true) {
                             putInt(REPEAT_MODE, repeatMode)
                             putBoolean(SHUFFLE_MODE, shuffleModeEnabled)
-                            putString(SHUFFLE_ORDER, shuffleOrder?.toString())
+                            putString(SHUFFLE_ORDER, shuffleOrderJson)
+                            putString(SHUFFLE_ORDER_TYPE, shuffleOrderType)
                             putInt(LAST_INDEX, position)
                             putLong(POSITION_IN_TRACK, positionInTrack)
                         }
@@ -312,7 +339,11 @@ class PersistentStorage(
         const val REPEAT_MODE = "repeat_mode"
         const val SHUFFLE_MODE = "shuffle_mode"
         const val SHUFFLE_ORDER = "shuffle_order"
+        const val SHUFFLE_ORDER_TYPE = "shuffle_order_type"
         const val POSITION_IN_TRACK = "position_in_track"
         const val LAST_INDEX = "last_index"
+
+        private const val ORDER_TYPE_MILLER = "miller"
+        private const val ORDER_TYPE_IMPROVED = "improved"
     }
 }

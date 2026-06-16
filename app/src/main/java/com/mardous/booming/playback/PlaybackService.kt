@@ -109,6 +109,7 @@ import com.mardous.booming.util.REWIND_WITH_BACK
 import com.mardous.booming.util.SEEK_INTERVAL
 import com.mardous.booming.util.STOP_WHEN_CLOSED_FROM_RECENTS
 import com.mardous.booming.util.SongPlayCountHelper
+import com.mardous.booming.util.USE_MILLER_SHUFFLE
 import com.mardous.booming.util.WIDGET_DYNAMIC_COLORS
 import com.mardous.booming.util.WIDGET_IMAGE_CORNER_RADIUS
 import com.mardous.booming.util.WIDGET_SMALL_LAYOUT_STYLE
@@ -282,7 +283,7 @@ class PlaybackService :
                 .build()
         )
 
-        player.exoPlayer.shuffleOrder = ImprovedShuffleOrder(0, 0, Random.nextLong())
+        player.exoPlayer.shuffleOrder = createShuffleOrder(0, 0)
         player.setSequentialTimelineEnabled(sequentialTimeline)
         player.addListener(this)
 
@@ -557,11 +558,12 @@ class PlaybackService :
         startPositionMs: Long
     ): ListenableFuture<MediaItemsWithStartPosition> {
         player.exoPlayer.let { exoPlayer ->
-            if (exoPlayer.shuffleOrder !is ImprovedShuffleOrder && !hasSetUnshuffledOrder) {
-                exoPlayer.shuffleOrder = ImprovedShuffleOrder(
+            if (exoPlayer.shuffleOrder !is ImprovedShuffleOrder &&
+                exoPlayer.shuffleOrder !is MillerShuffleOrder &&
+                !hasSetUnshuffledOrder) {
+                exoPlayer.shuffleOrder = createShuffleOrder(
                     firstIndex = player.currentMediaItemIndex,
-                    length = player.mediaItemCount,
-                    randomSeed = Random.nextLong()
+                    length = player.mediaItemCount
                 )
             }
 
@@ -826,10 +828,9 @@ class PlaybackService :
         if (events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED) &&
             !events.contains(Player.EVENT_TIMELINE_CHANGED)) {
             if (player.shuffleModeEnabled && persistentStorage.restorationState.isRestored) {
-                this.player.exoPlayer.shuffleOrder = ImprovedShuffleOrder(
+                this.player.exoPlayer.shuffleOrder = createShuffleOrder(
                     firstIndex = player.currentMediaItemIndex,
-                    length = player.mediaItemCount,
-                    randomSeed = Random.nextLong()
+                    length = player.mediaItemCount
                 )
             }
         }
@@ -855,6 +856,17 @@ class PlaybackService :
 
     override fun onSharedPreferenceChanged(preferences: SharedPreferences, key: String?) {
         when (key) {
+            USE_MILLER_SHUFFLE -> {
+                // Re-create the shuffle order with the newly selected algorithm if
+                // shuffle mode is currently active
+                if (player.shuffleModeEnabled) {
+                    player.exoPlayer.shuffleOrder = createShuffleOrder(
+                        firstIndex = player.currentMediaItemIndex,
+                        length = player.mediaItemCount
+                    )
+                }
+            }
+
             QUEUE_NEXT_MODE -> {
                 player.setSequentialTimelineEnabled(sequentialTimeline)
             }
@@ -886,6 +898,30 @@ class PlaybackService :
             WIDGET_THIRD_LINE_CONTENT -> {
                 updateWidgets()
             }
+        }
+    }
+
+    /**
+     * Creates a [ShuffleOrder] using whichever algorithm the user has selected.
+     *
+     * - **Miller Shuffle** ([Preferences.useMillerShuffle] == true): O(1) per-index,
+     *   no array, deterministic, ideal for large libraries.
+     * - **Fisher-Yates** (default): pre-built [IntArray], classic behaviour.
+     */
+    private fun createShuffleOrder(firstIndex: Int, length: Int): androidx.media3.exoplayer.source.ShuffleOrder {
+        val seed = Random.nextLong()
+        return if (Preferences.useMillerShuffle) {
+            MillerShuffleOrder(
+                firstIndex = firstIndex,
+                length = length,
+                shuffleId = seed.toUInt().toLong()
+            )
+        } else {
+            ImprovedShuffleOrder(
+                firstIndex = firstIndex,
+                length = length,
+                randomSeed = seed
+            )
         }
     }
 
