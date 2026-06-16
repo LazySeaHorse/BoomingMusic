@@ -17,6 +17,8 @@
 
 package com.mardous.booming.ui.screen.settings
 
+import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.net.Uri
@@ -145,6 +147,56 @@ class LibraryPreferencesFragment : PreferenceScreenFragment() {
 class NetworkPreferencesFragment : PreferenceScreenFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.preferences_screen_network)
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        updateServerAddressSummary()
+    }
+
+    override fun onSharedPreferenceChanged(preferences: SharedPreferences, key: String?) {
+        super.onSharedPreferenceChanged(preferences, key)
+        if (key == "media_server_enabled") {
+            val enabled = preferences.getBoolean("media_server_enabled", false)
+            val context = requireContext()
+            val intent = Intent(context, com.mardous.booming.server.MediaServerService::class.java)
+            if (enabled) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } else {
+                context.stopService(intent)
+            }
+            updateServerAddressSummary()
+        }
+    }
+
+    private fun updateServerAddressSummary() {
+        val addressPref = findPreference<Preference>("media_server_address") ?: return
+        val sp = preferenceManager.sharedPreferences ?: return
+        val enabled = sp.getBoolean("media_server_enabled", false)
+        if (enabled) {
+            val ip = getIpAddress()
+            addressPref.summary = "http://$ip:8080"
+        } else {
+            addressPref.summary = getString(R.string.media_server_address_offline)
+        }
+    }
+
+    private fun getIpAddress(): String {
+        val context = context ?: return "0.0.0.0"
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        val ipAddress = wifiManager.connectionInfo.ipAddress
+        return String.format(
+            java.util.Locale.US,
+            "%d.%d.%d.%d",
+            ipAddress and 0xff,
+            ipAddress shr 8 and 0xff,
+            ipAddress shr 16 and 0xff,
+            ipAddress shr 24 and 0xff
+        )
     }
 }
 

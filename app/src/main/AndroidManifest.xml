@@ -8,6 +8,7 @@
         android:name="android.permission.BLUETOOTH_CONNECT"
         android:minSdkVersion="31"
         android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission
         android:name="android.permission.POST_NOTIFICATIONS"
         android:minSdkVersion="33"/>
@@ -274,6 +275,12 @@
         <meta-data
             android:name="com.google.android.gms.car.notification.SmallIcon"
             android:resource="@drawable/ic_stat_music_playback"/>
+
+        <service
+            android:name=".server.MediaServerService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- For auto-storage of locale on Android 12 and lower -->
         <service

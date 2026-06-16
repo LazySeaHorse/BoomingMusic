@@ -271,6 +271,7 @@ fun Properties.property(key: String) =
 dependencies {
     implementation(libs.material.components)
     implementation(libs.androidx.core)
+    implementation(libs.nanohttpd)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.concurrent.futures)
     implementation(libs.androidx.mediarouter)

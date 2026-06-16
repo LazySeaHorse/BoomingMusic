@@ -1007,4 +1007,11 @@
     <string name="uncaught_error_restart_app">Restart app</string>
     <string name="uncaught_error_github">Open issue on GitHub</string>
     <string name="uncaught_error_send">Send report</string>
+
+    <!-- Local Media Server -->
+    <string name="media_server_category_title">Local Media Server</string>
+    <string name="media_server_enabled_title">Enable Web Server</string>
+    <string name="media_server_enabled_summary">Access your music library from any device on the same network</string>
+    <string name="media_server_address_title">Server Address</string>
+    <string name="media_server_address_offline">Server is offline</string>
 </resources>
