@@ -21,27 +21,27 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Lint
-        run: ./gradlew lint
+        run: ./gradlew lintNormalDebug
 
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-java@v5
-      with:
-        java-version: 21
-        distribution: 'zulu'
-        cache: gradle
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: 'zulu'
+          cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-    - name: Build with Gradle
-      run: ./gradlew assemble
+      - name: Build with Gradle
+        run: ./gradlew assembleNormalDebug
 
-    - name: Upload PR artifacts
-      if: github.event_name == 'pull_request'
-      uses: actions/upload-artifact@v7
-      with:
-        name: release-apk
-        path: app/build/outputs/apk/*/release/BoomingMusic-*.apk
+      - name: Upload build artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/normal/debug/BoomingMusic-*.apk

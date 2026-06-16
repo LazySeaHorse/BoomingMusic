@@ -11,69 +11,65 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        variant: [ normal, fdroid, playstore ]
-
     steps:
       - uses: actions/checkout@v6
 
-      - name: set up JDK 21
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'zulu'
           cache: gradle
 
-      - name: Setup Android-SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v4
-
-      - name: Create files for signing
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          SIGNING_PROPERTIES: ${{ secrets.SIGNING_PROPERTIES }}
-        run: |
-          echo $SIGNING_KEY | base64 -di > ./booming_keystore.jks
-          echo $SIGNING_PROPERTIES | base64 -di > ./keystore.properties
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Build app
-        env:
-          VARIANT: ${{ matrix.variant }}
-          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
-          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+      - name: Generate debug keystore (test signing)
         run: |
-          CAP_VARIANT="$(echo ${VARIANT:0:1} | tr '[:lower:]' '[:upper:]')${VARIANT:1}"
-          if [ "$VARIANT" == "playstore" ]; then
-            ./gradlew bundle${CAP_VARIANT}Release
-          else
-            ./gradlew assemble${CAP_VARIANT}Release
-          fi
+          keytool -genkey -v \
+            -keystore ./booming_keystore.jks \
+            -alias booming \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=BoomingMusic, O=Test, C=US"
+          cat > ./keystore.properties <<EOF
+          storeFile=./booming_keystore.jks
+          storePassword=android
+          keyAlias=booming
+          keyPassword=android
+          EOF
 
-      - name: Upload Artifacts
+      - name: Build normal release APK
+        run: ./gradlew assembleNormalRelease
+        # LastFM keys are intentionally omitted – the build falls back to
+        # empty strings and disables the integration at runtime.
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: artifacts-${{ matrix.variant }}-release
-          path: |
-            app/build/outputs/apk/*/release/BoomingMusic-*.apk
-            app/build/outputs/bundle/*/*.aab
+          name: release-apk
+          path: app/build/outputs/apk/normal/release/BoomingMusic-*.apk
 
   publish-release:
     needs: build
     runs-on: ubuntu-latest
-    if: > # TEMPORARY: Prevent releases for alpha/beta/rc tags.
-      !contains(github.ref_name, 'alpha') && 
-      !contains(github.ref_name, 'beta') && 
+    if: >
+      !contains(github.ref_name, 'alpha') &&
+      !contains(github.ref_name, 'beta') &&
       !contains(github.ref_name, 'rc')
 
     steps:
-      - name: Download Artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-artifacts
-          pattern: artifacts-*-release
+          pattern: release-apk
           merge-multiple: true
 
       - name: Set prerelease flag
@@ -86,10 +82,9 @@ jobs:
             echo "value=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Github Release
+      - name: GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           prerelease: ${{ steps.prerelease.outputs.value }}
           generate_release_notes: true
-          files: |
-            release-artifacts/*/release/BoomingMusic-*.apk
+          files: release-artifacts/BoomingMusic-*.apk
