@@ -76,15 +76,20 @@ export function updateModeIndicator(target) {
     const indicator = document.getElementById('mode-indicator');
     if (!indicator) return;
     
+    if (target === 'standalone') {
+        indicator.style.display = 'none';
+        return;
+    }
+    
     const configs = {
         phone: { text: '📱 Controlled by phone', cls: 'mode-phone' },
-        web:   { text: '🌐 Playing here',         cls: 'mode-web'   },
-        standalone: { text: '🎵 Standalone',        cls: 'mode-standalone' }
+        web:   { text: '🌐 Playing here',         cls: 'mode-web'   }
     };
     
     const cfg = configs[target] || configs.phone;
     indicator.textContent = cfg.text;
     indicator.className = 'mode-indicator ' + cfg.cls;
+    indicator.style.display = 'flex';
 }
 
 export function openFullscreenPlayer() {

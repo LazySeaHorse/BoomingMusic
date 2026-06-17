@@ -366,8 +366,8 @@ class MediaServerService : Service(), KoinComponent {
         }
     }
     
-    private fun getSerializedState(): String? {
-        val controller = mediaController ?: return null
+    private suspend fun getSerializedState(): String? = withContext(Dispatchers.Main) {
+        val controller = mediaController ?: return@withContext null
         val currentItem = controller.currentMediaItem
         val songId = currentItem?.mediaId?.toLongOrNull()
         val song = songId?.let { id ->
@@ -405,12 +405,14 @@ class MediaServerService : Service(), KoinComponent {
             repeat = repeatModeStr,
             song = serverSong
         )
-        return json.encodeToString(state)
+        json.encodeToString(state)
     }
     
     private fun broadcastState() {
-        val stateStr = getSerializedState() ?: return
-        broadcastMessage(stateStr)
+        serviceScope.launch {
+            val stateStr = getSerializedState() ?: return@launch
+            broadcastMessage(stateStr)
+        }
     }
     
     private fun broadcastMessage(message: String) {

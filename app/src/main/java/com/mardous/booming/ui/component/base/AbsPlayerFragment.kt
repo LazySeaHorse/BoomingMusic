@@ -99,6 +99,9 @@ import com.mardous.booming.ui.screen.player.cover.CoverPagerFragment
 import com.mardous.booming.ui.screen.tageditor.SongTagEditorActivity
 import com.mardous.booming.util.NOW_PLAYING_EXTRA_INFO
 import com.mardous.booming.util.Preferences
+import com.mardous.booming.util.MEDIA_SERVER_PLAYBACK_TARGET
+import com.mardous.booming.util.MediaServerPlaybackTarget
+import android.content.SharedPreferences
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import org.koin.androidx.viewmodel.ext.android.activityViewModel
@@ -113,6 +116,12 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
 
     val playerViewModel: PlayerViewModel by activityViewModel()
     val libraryViewModel: LibraryViewModel by activityViewModel()
+
+    private val mediaServerPrefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "media_server_enabled" || key == MEDIA_SERVER_PLAYBACK_TARGET) {
+            updateMediaServerSubtitle()
+        }
+    }
 
     private var gesturesController: PlayerGesturesController? = null
     private var coverFragment: CoverPagerFragment? = null
@@ -133,6 +142,8 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
         super.onViewCreated(view, savedInstanceState)
         onCreateChildFragments()
         onPrepareViewGestures(view)
+        updateMediaServerSubtitle()
+        Preferences.registerOnSharedPreferenceChangeListener(mediaServerPrefListener)
         viewLifecycleOwner.launchAndRepeatWithViewLifecycle {
             playerViewModel.mediaEvent.filter { it == MediaEvent.FavoriteContentChanged }
                 .collect {
@@ -426,6 +437,7 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
     }
 
     override fun onDestroyView() {
+        Preferences.unregisterOnSharedPreferenceChangeListener(mediaServerPrefListener)
         view?.setOnTouchListener(null)
         gesturesController?.release()
         gesturesController = null
@@ -744,6 +756,17 @@ fun goToDestination(
             }
             findNavController(R.id.fragment_container)
                 .navigate(destinationId, args, navOptions)
+        }
+    }
+
+    protected fun updateMediaServerSubtitle() {
+        val toolbar = playerToolbar ?: return
+        val enabled = Preferences.isMediaServerEnabled
+        val target = Preferences.mediaServerPlaybackTarget
+        if (enabled && target == MediaServerPlaybackTarget.WEB) {
+            toolbar.subtitle = getString(R.string.media_server_controlled_by_web)
+        } else {
+            toolbar.subtitle = null
         }
     }
 }

@@ -2,7 +2,7 @@
  * Player module - handles playback control, shuffle, and repeat
  */
 
-import { updatePlayPauseButton, updateActiveTrack } from './ui.js';
+import { updatePlayPauseButton, updateActiveTrack, updateNowPlaying } from './ui.js';
 import { cycleTheme } from './theme.js';
 import { remoteState, sendCommand } from './remote.js';
 
@@ -27,6 +27,7 @@ export function playSong(song, filteredSongs) {
     }
     
     playerState.currentSong = song;
+    updateNowPlaying(song);
     
     // Cycle to next theme when a new song plays
     cycleTheme();

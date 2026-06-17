@@ -465,6 +465,14 @@ object Preferences : KoinComponent {
         get() = preferences.getBoolean(DISPLAY_NEXT_SONG, true)
         set(value) = preferences.edit { putBoolean(DISPLAY_NEXT_SONG, value) }
 
+    var mediaServerPlaybackTarget: String
+        get() = preferences.getString(MEDIA_SERVER_PLAYBACK_TARGET, MediaServerPlaybackTarget.DEFAULT) ?: MediaServerPlaybackTarget.DEFAULT
+        set(value) = preferences.edit { putString(MEDIA_SERVER_PLAYBACK_TARGET, value) }
+
+    var isMediaServerEnabled: Boolean
+        get() = preferences.getBoolean("media_server_enabled", false)
+        set(value) = preferences.edit { putBoolean("media_server_enabled", value) }
+
     fun SharedPreferences.nullString(key: String): String? = getString(key, null)
 
     fun SharedPreferences.requireString(key: String, defaultValue: String): String =
