@@ -94,11 +94,14 @@ import com.mardous.booming.playback.processor.BalanceAudioProcessor
 import com.mardous.booming.playback.processor.ReplayGainAudioProcessor
 import com.mardous.booming.playback.renderer.AlacWorkaroundCodecSelector
 import com.mardous.booming.playback.renderer.BoomingMusicRenderersFactory
+import com.mardous.booming.server.RemoteSyncState
 import com.mardous.booming.ui.screen.MainActivity
 import com.mardous.booming.util.CLEAR_QUEUE_ON_COMPLETION
 import com.mardous.booming.util.ENABLE_HISTORY
 import com.mardous.booming.util.IGNORE_AUDIO_FOCUS
+import com.mardous.booming.util.MEDIA_SERVER_PLAYBACK_TARGET
 import com.mardous.booming.util.MP3_INDEX_SEEKING
+import com.mardous.booming.util.MediaServerPlaybackTarget
 import com.mardous.booming.util.PAUSE_ON_ZERO_VOLUME
 import com.mardous.booming.util.PLAY_ON_STARTUP_MODE
 import com.mardous.booming.util.PlayOnStartupMode
@@ -136,6 +139,11 @@ class PlaybackService :
 
     private val serviceScope = CoroutineScope(Job() + Main)
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val remoteMuteStateChangedCallback = {
+        serviceScope.launch(Main) {
+            restorePlayerVolume()
+        }
+    }
 
     private val glanceManager by lazy { GlanceAppWidgetManager(applicationContext) }
 
@@ -332,6 +340,9 @@ class PlaybackService :
         }
 
         preferences.registerOnSharedPreferenceChangeListener(this)
+        RemoteSyncState.setTarget(
+            preferences.getString(MEDIA_SERVER_PLAYBACK_TARGET, MediaServerPlaybackTarget.DEFAULT)
+        )
         audioOutputObserver.startObserver()
 
         prepareEqualizerAndSoundSettings()
@@ -357,6 +368,7 @@ class PlaybackService :
         }
         eqStateHandler?.removeCallbacksAndMessages(null)
         uiHandler.removeCallbacks(headsetClickRunnable)
+        RemoteSyncState.onMuteStateChanged = null
         serviceScope.cancel()
         preferences.unregisterOnSharedPreferenceChangeListener(this)
         audioOutputObserver.stopObserver()
@@ -883,6 +895,12 @@ class PlaybackService :
                 player.setAudioAttributes(player.audioAttributes, handleAudioFocus)
             }
 
+            MEDIA_SERVER_PLAYBACK_TARGET -> {
+                RemoteSyncState.setTarget(
+                    preferences.getString(key, MediaServerPlaybackTarget.DEFAULT)
+                )
+            }
+
             REWIND_WITH_BACK -> {
                 player.exoPlayer.setMaxSeekToPreviousPositionMs(maxSeekToPreviousMs)
             }
@@ -1135,7 +1153,7 @@ class PlaybackService :
     }
 
     private fun restorePlayerVolume() {
-        val multiplier = if (com.mardous.booming.server.RemoteSyncState.isMutedForWeb) 0f else 1f
+        val multiplier = if (RemoteSyncState.isMutedForWeb) 0f else 1f
         player.volume = equalizerManager.volumeState.value.currentVolume * multiplier
     }
 
@@ -1146,15 +1164,11 @@ class PlaybackService :
         serviceScope.launch {
             equalizerManager.volumeState.collect { volume ->
                 cancelSleepTimerFadeOut()
-                val multiplier = if (com.mardous.booming.server.RemoteSyncState.isMutedForWeb) 0f else 1f
+                val multiplier = if (RemoteSyncState.isMutedForWeb) 0f else 1f
                 player.volume = volume.currentVolume * multiplier
             }
         }
-        com.mardous.booming.server.RemoteSyncState.onMuteStateChanged = {
-            serviceScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                restorePlayerVolume()
-            }
-        }
+        RemoteSyncState.onMuteStateChanged = remoteMuteStateChangedCallback
         serviceScope.launch {
             equalizerManager.audioOffload.collect { audioOffloadingEnabled ->
                 player.trackSelectionParameters = player.trackSelectionParameters

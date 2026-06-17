@@ -96,27 +96,11 @@ object Preferences : KoinComponent {
         }
     }
 
-    var blackTheme: Boolean
+    val blackTheme: Boolean
         get() = preferences.getBoolean(BLACK_THEME, false)
-        set(value) = preferences.edit { putBoolean(BLACK_THEME, value) }
 
-    var isMaterialYouTheme: Boolean
-        get() = themeColorSource == "wallpaper"
-        set(value) {
-            themeColorSource = if (value) "wallpaper" else "basic_color"
-        }
-
-    var themeColorSource: String
-        get() = preferences.getString(THEME_COLOR_SOURCE, if (hasS()) "wallpaper" else "basic_color") ?: if (hasS()) "wallpaper" else "basic_color"
-        set(value) = preferences.edit { putString(THEME_COLOR_SOURCE, value) }
-
-    var themeBasicColorSeed: Int
-        get() = preferences.getInt(THEME_BASIC_COLOR_SEED, 0xFF6750A4.toInt())
-        set(value) = preferences.edit { putInt(THEME_BASIC_COLOR_SEED, value) }
-
-    var themePaletteStyle: String
-        get() = preferences.getString(THEME_PALETTE_STYLE, "TonalSpot") ?: "TonalSpot"
-        set(value) = preferences.edit { putString(THEME_PALETTE_STYLE, value) }
+    val isMaterialYouTheme: Boolean
+        get() = preferences.getBoolean(MATERIAL_YOU, hasS())
 
     val isCustomFont: Boolean
         get() = preferences.getBoolean(USE_CUSTOM_FONT, true)
@@ -564,6 +548,14 @@ interface UpdateSearchMode {
     }
 }
 
+interface MediaServerPlaybackTarget {
+    companion object {
+        const val PHONE = "phone"
+        const val WEB = "web"
+        const val DEFAULT = PHONE
+    }
+}
+
 const val BLACK_THEME = "black_theme"
 const val MATERIAL_YOU = "material_you"
 const val USE_CUSTOM_FONT = "use_custom_font"
@@ -630,6 +622,7 @@ const val MP3_INDEX_SEEKING = "mp3_index_seeking"
 const val IGNORE_MEDIA_STORE = "ignore_media_store"
 const val USE_FOLDER_ART = "use_folder_art"
 const val PREFERRED_IMAGE_SIZE = "preferred_image_size"
+const val MEDIA_SERVER_PLAYBACK_TARGET = "media_server_playback_target"
 const val ONLY_ALBUM_ARTISTS = "only_album_artists"
 const val TRASH_MUSIC_FILES = "trash_music_files"
 const val RECURSIVE_FOLDER_ACTIONS = "recursive_folder_actions"
@@ -666,6 +659,3 @@ const val QUEUE_HEIGHT = "queue_height"
 const val LASTFM_LOGIN = "lastfm_login"
 const val LISTENBRAINZ_LOGIN = "listenbrainz_login"
 const val USE_MILLER_SHUFFLE = "use_miller_shuffle"
-const val THEME_COLOR_SOURCE = "theme_color_source"
-const val THEME_BASIC_COLOR_SEED = "theme_basic_color_seed"
-const val THEME_PALETTE_STYLE = "theme_palette_style"

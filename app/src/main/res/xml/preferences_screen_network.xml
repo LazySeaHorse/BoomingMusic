@@ -220,6 +220,16 @@
             app:widgetLayout="@layout/preference_switch"
             app:key="media_server_enabled"/>
 
+        <ListPreference
+            app:iconSpaceReserved="true"
+            app:title="@string/media_server_playback_target_title"
+            app:entries="@array/pref_media_server_playback_target_entries"
+            app:entryValues="@array/pref_media_server_playback_target_values"
+            app:useSimpleSummaryProvider="true"
+            app:defaultValue="phone"
+            app:layout="@layout/list_item_view"
+            app:key="media_server_playback_target"/>
+
         <Preference
             app:iconSpaceReserved="true"
             app:title="@string/media_server_address_title"

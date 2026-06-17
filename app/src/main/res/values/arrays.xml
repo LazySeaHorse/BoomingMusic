@@ -165,6 +165,16 @@
         <item>never</item>
     </string-array>
 
+    <string-array name="pref_media_server_playback_target_entries">
+        <item>@string/media_server_playback_target_phone</item>
+        <item>@string/media_server_playback_target_web</item>
+    </string-array>
+
+    <string-array name="pref_media_server_playback_target_values">
+        <item>phone</item>
+        <item>web</item>
+    </string-array>
+
     <string-array name="pref_language_names">
         <item>@string/system_default</item>
         <item>Arabic</item>

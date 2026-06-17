@@ -175,7 +175,6 @@ Also thanks to:
 - [LRCLib](https://lrclib.net/)
 - [Better Lyrics](https://better-lyrics.boidu.dev/)
 - [Lyrically API](https://lyrics.paxsenix.org/) (by [Alex](https://github.com/Paxsenix0))
-- [ReadYou](https://github.com/ReadYouApp/ReadYou) (for setting menu styles and theming configuration design)
 
 ## ⚖️ License
 

@@ -8,11 +8,13 @@ import android.app.Service
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -21,6 +23,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.mardous.booming.data.local.repository.SongRepository
 import com.mardous.booming.playback.PlaybackService
 import com.mardous.booming.ui.screen.MainActivity
+import com.mardous.booming.util.MEDIA_SERVER_PLAYBACK_TARGET
+import com.mardous.booming.util.MediaServerPlaybackTarget
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
@@ -82,12 +86,14 @@ class MediaServerService : Service(), KoinComponent {
     private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val songRepository: SongRepository by inject()
+    private val preferences: SharedPreferences by inject()
     
     private var mediaController: MediaController? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
     
     private val webSocketSessions = java.util.Collections.synchronizedList(mutableListOf<WebSocketServerSession>())
     private val json = Json { ignoreUnknownKeys = true }
+    private val remoteTargetChangedCallback = { broadcastState() }
     
     companion object {
         const val CHANNEL_ID = "BoomingServerChannel"
@@ -121,6 +127,10 @@ class MediaServerService : Service(), KoinComponent {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+        RemoteSyncState.setTarget(
+            preferences.getString(MEDIA_SERVER_PLAYBACK_TARGET, MediaServerPlaybackTarget.DEFAULT)
+        )
+        RemoteSyncState.onTargetChanged = remoteTargetChangedCallback
         
         // Start Ktor server
         startKtorServer()
@@ -268,9 +278,10 @@ class MediaServerService : Service(), KoinComponent {
             when (cmd.type) {
                 "SET_TARGET" -> {
                     cmd.target?.let { target ->
-                        RemoteSyncState.target = target
-                        RemoteSyncState.isMutedForWeb = (target == "web")
-                        broadcastState()
+                        val normalizedTarget = RemoteSyncState.setTarget(target)
+                        preferences.edit {
+                            putString(MEDIA_SERVER_PLAYBACK_TARGET, normalizedTarget)
+                        }
                     }
                 }
                 "PLAY" -> {
@@ -325,7 +336,7 @@ class MediaServerService : Service(), KoinComponent {
                     }
                 }
                 "WEB_STATE" -> {
-                    if (RemoteSyncState.target == "web") {
+                    if (RemoteSyncState.target == MediaServerPlaybackTarget.WEB) {
                         cmd.isPlaying?.let { isPlaying ->
                             if (isPlaying != controller.isPlaying) {
                                 if (isPlaying) controller.play() else controller.pause()
@@ -418,6 +429,7 @@ class MediaServerService : Service(), KoinComponent {
     override fun onDestroy() {
         server?.stop(1000, 2000)
         server = null
+        RemoteSyncState.onTargetChanged = null
         
         serviceScope.launch(Dispatchers.Main) {
             mediaController?.removeListener(playerListener)

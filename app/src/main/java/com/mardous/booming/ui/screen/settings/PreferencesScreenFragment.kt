@@ -46,6 +46,7 @@ import com.mardous.booming.coil.CoverProvider
 import com.mardous.booming.core.model.lyrics.LyricsViewSettings
 import com.mardous.booming.data.local.room.InclExclDao
 import com.mardous.booming.data.model.network.ScrobblingService
+import com.mardous.booming.server.RemoteSyncState
 import com.mardous.booming.extensions.files.getFormattedFileName
 import com.mardous.booming.extensions.hasR
 import com.mardous.booming.extensions.hasS
@@ -94,6 +95,8 @@ import com.mardous.booming.util.LAST_ADDED_CUTOFF
 import com.mardous.booming.util.LIBRARY_CATEGORIES
 import com.mardous.booming.util.LISTENBRAINZ_LOGIN
 import com.mardous.booming.util.MATERIAL_YOU
+import com.mardous.booming.util.MEDIA_SERVER_PLAYBACK_TARGET
+import com.mardous.booming.util.MediaServerPlaybackTarget
 import com.mardous.booming.util.NOW_PLAYING_EXTRA_INFO
 import com.mardous.booming.util.NOW_PLAYING_SCREEN
 import com.mardous.booming.util.ON_CLEAR_QUEUE_ACTION
@@ -151,26 +154,36 @@ class NetworkPreferencesFragment : PreferenceScreenFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        syncPlaybackTarget()
         updateServerAddressSummary()
     }
 
     override fun onSharedPreferenceChanged(preferences: SharedPreferences, key: String?) {
         super.onSharedPreferenceChanged(preferences, key)
-        if (key == "media_server_enabled") {
-            val enabled = preferences.getBoolean("media_server_enabled", false)
-            val context = requireContext()
-            val intent = Intent(context, com.mardous.booming.server.MediaServerService::class.java)
-            if (enabled) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
+        when (key) {
+            "media_server_enabled" -> {
+                val enabled = preferences.getBoolean("media_server_enabled", false)
+                val context = requireContext()
+                val intent = Intent(context, com.mardous.booming.server.MediaServerService::class.java)
+                if (enabled) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
                 } else {
-                    context.startService(intent)
+                    context.stopService(intent)
                 }
-            } else {
-                context.stopService(intent)
+                updateServerAddressSummary()
             }
-            updateServerAddressSummary()
+            MEDIA_SERVER_PLAYBACK_TARGET -> syncPlaybackTarget(preferences)
         }
+    }
+
+    private fun syncPlaybackTarget(sp: SharedPreferences? = preferenceManager.sharedPreferences) {
+        RemoteSyncState.setTarget(
+            sp?.getString(MEDIA_SERVER_PLAYBACK_TARGET, MediaServerPlaybackTarget.DEFAULT)
+        )
     }
 
     private fun updateServerAddressSummary() {

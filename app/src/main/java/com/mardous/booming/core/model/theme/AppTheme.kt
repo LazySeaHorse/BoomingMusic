@@ -48,20 +48,20 @@ class AppTheme private constructor(
         fun createAppTheme(context: Context): AppTheme {
             val generalTheme = Preferences.generalTheme
             val themeMode = Preferences.getThemeMode(generalTheme)
-            val colorSource = Preferences.themeColorSource
             if (DynamicColors.isDynamicColorAvailable()) {
-                if (colorSource == "wallpaper") {
+                if (Preferences.isMaterialYouTheme) {
                     return AppTheme(
                         id = generalTheme,
                         themeRes = themeMode.themeRes,
                         applyDynamicColors = true
                     )
-                } else if (colorSource == "basic_color") {
+                }
+                if (context is ContextThemeWrapper) {
                     return AppTheme(
                         id = generalTheme,
                         themeRes = themeMode.themeRes,
                         applyDynamicColors = true,
-                        seedColor = Preferences.themeBasicColorSeed
+                        seedColor = ContextCompat.getColor(context, R.color.md_theme_primary)
                     )
                 }
             }
