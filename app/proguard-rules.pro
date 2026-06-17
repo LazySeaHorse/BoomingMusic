@@ -51,6 +51,7 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 -dontwarn org.slf4j.impl.StaticLoggerBinder
+-dontwarn java.lang.management.**
 
 #-dontwarn
 #-ignorewarnings
