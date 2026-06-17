@@ -142,7 +142,6 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
         super.onViewCreated(view, savedInstanceState)
         onCreateChildFragments()
         onPrepareViewGestures(view)
-        updateMediaServerSubtitle()
         Preferences.registerOnSharedPreferenceChangeListener(mediaServerPrefListener)
         viewLifecycleOwner.launchAndRepeatWithViewLifecycle {
             playerViewModel.mediaEvent.filter { it == MediaEvent.FavoriteContentChanged }
@@ -170,6 +169,11 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
                     applyBlur(song, scheme)
                 }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        updateMediaServerSubtitle()
     }
 
     @CallSuper
@@ -699,7 +703,11 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
     }
 
     protected fun updateMediaServerSubtitle() {
-        val toolbar = playerToolbar ?: return
+        val toolbar = try {
+            playerToolbar
+        } catch (e: Exception) {
+            null
+        } ?: return
         val enabled = Preferences.isMediaServerEnabled
         val target = Preferences.mediaServerPlaybackTarget
         if (enabled && target == MediaServerPlaybackTarget.WEB) {
