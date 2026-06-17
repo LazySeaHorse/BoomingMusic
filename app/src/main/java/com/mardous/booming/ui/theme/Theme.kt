@@ -92,13 +92,30 @@ private val darkScheme = darkColorScheme(
 fun BoomingMusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     blackTheme: Boolean = Preferences.blackTheme,
-    dynamicColor: Boolean = Preferences.isMaterialYouTheme,
+    colorSource: String = Preferences.themeColorSource,
+    basicColorSeed: Int = Preferences.themeBasicColorSeed,
+    paletteStyle: String = Preferences.themePaletteStyle,
     content: @Composable () -> Unit
 ) {
+    val style = try {
+        PaletteStyle.valueOf(paletteStyle)
+    } catch (e: Exception) {
+        PaletteStyle.TonalSpot
+    }
+
     var colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        colorSource == "wallpaper" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+
+        colorSource == "basic_color" -> {
+            val keyColor = Color(basicColorSeed)
+            dynamicColorScheme(
+                keyColor = keyColor,
+                isDark = darkTheme,
+                style = style
+            )
         }
 
         darkTheme -> darkScheme

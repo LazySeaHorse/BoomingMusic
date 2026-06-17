@@ -6,7 +6,7 @@
     app:startDestination="@id/nav_home_preferences">
     <fragment
         android:id="@+id/nav_home_preferences"
-        android:name="com.mardous.booming.ui.screen.settings.PreferenceScreenFragment"
+        android:name="com.mardous.booming.ui.screen.settings.ComposeSettingsHomeFragment"
         android:label="@string/settings_title">
         <action
             android:id="@+id/action_to_appearancePreferences"
@@ -67,7 +67,7 @@
     </fragment>
     <fragment
         android:id="@+id/nav_interface_preferences"
-        android:name="com.mardous.booming.ui.screen.settings.AppearancePreferencesFragment"
+        android:name="com.mardous.booming.ui.screen.settings.ComposeAppearancePreferencesFragment"
         android:label="@string/appearance_title"/>
     <fragment
         android:id="@+id/nav_now_playing_preferences"

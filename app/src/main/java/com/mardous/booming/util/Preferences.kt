@@ -96,11 +96,27 @@ object Preferences : KoinComponent {
         }
     }
 
-    val blackTheme: Boolean
+    var blackTheme: Boolean
         get() = preferences.getBoolean(BLACK_THEME, false)
+        set(value) = preferences.edit { putBoolean(BLACK_THEME, value) }
 
-    val isMaterialYouTheme: Boolean
-        get() = preferences.getBoolean(MATERIAL_YOU, hasS())
+    var isMaterialYouTheme: Boolean
+        get() = themeColorSource == "wallpaper"
+        set(value) {
+            themeColorSource = if (value) "wallpaper" else "basic_color"
+        }
+
+    var themeColorSource: String
+        get() = preferences.getString(THEME_COLOR_SOURCE, if (hasS()) "wallpaper" else "basic_color") ?: if (hasS()) "wallpaper" else "basic_color"
+        set(value) = preferences.edit { putString(THEME_COLOR_SOURCE, value) }
+
+    var themeBasicColorSeed: Int
+        get() = preferences.getInt(THEME_BASIC_COLOR_SEED, 0xFF6750A4.toInt())
+        set(value) = preferences.edit { putInt(THEME_BASIC_COLOR_SEED, value) }
+
+    var themePaletteStyle: String
+        get() = preferences.getString(THEME_PALETTE_STYLE, "TonalSpot") ?: "TonalSpot"
+        set(value) = preferences.edit { putString(THEME_PALETTE_STYLE, value) }
 
     val isCustomFont: Boolean
         get() = preferences.getBoolean(USE_CUSTOM_FONT, true)
@@ -650,3 +666,6 @@ const val QUEUE_HEIGHT = "queue_height"
 const val LASTFM_LOGIN = "lastfm_login"
 const val LISTENBRAINZ_LOGIN = "listenbrainz_login"
 const val USE_MILLER_SHUFFLE = "use_miller_shuffle"
+const val THEME_COLOR_SOURCE = "theme_color_source"
+const val THEME_BASIC_COLOR_SEED = "theme_basic_color_seed"
+const val THEME_PALETTE_STYLE = "theme_palette_style"
