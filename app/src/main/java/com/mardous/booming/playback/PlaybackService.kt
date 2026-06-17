@@ -139,7 +139,7 @@ class PlaybackService :
 
     private val serviceScope = CoroutineScope(Job() + Main)
     private val uiHandler = Handler(Looper.getMainLooper())
-    private val remoteMuteStateChangedCallback = {
+    private val remoteMuteStateChangedCallback: () -> Unit = {
         serviceScope.launch(Main) {
             restorePlayerVolume()
         }
