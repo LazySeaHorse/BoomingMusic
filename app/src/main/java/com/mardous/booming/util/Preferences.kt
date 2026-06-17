@@ -552,6 +552,7 @@ interface MediaServerPlaybackTarget {
     companion object {
         const val PHONE = "phone"
         const val WEB = "web"
+        const val STANDALONE = "standalone"
         const val DEFAULT = PHONE
     }
 }

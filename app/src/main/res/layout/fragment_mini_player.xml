@@ -145,5 +145,26 @@
 
     </FrameLayout>
 
+    <!-- Remote control active indicator pill -->
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/remoteControlBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="4dp"
+        android:background="@drawable/bg_remote_badge"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:text="@string/media_server_controlled_by_web"
+        android:textColor="?attr/colorOnPrimaryContainer"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/image"
+        tools:visibility="visible" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
 

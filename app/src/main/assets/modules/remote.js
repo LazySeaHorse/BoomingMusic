@@ -1,23 +1,33 @@
 import { playerState, playSong } from './player.js';
 import { trackListState } from './trackList.js';
-import { updatePlayPauseButton, updateActiveTrack, updateNowPlaying } from './ui.js';
+import { updatePlayPauseButton, updateActiveTrack, updateNowPlaying, updateModeIndicator } from './ui.js';
 
 let socket = null;
 let reconnectTimer = null;
+
+// Clock-based fake seek tracking for phone target mode
+let fakeSeekState = {
+    songId: null,
+    startPositionMs: 0,
+    startTimeMs: 0,
+    durationMs: 0,
+    isPlaying: false
+};
+let fakeSeekAnimFrame = null;
+
 export const remoteState = {
-    target: 'web', // 'web' or 'phone'
+    target: 'phone', // 'phone', 'web', or 'standalone'
     isPlaying: false,
     position: 0,
     song: null,
     shuffle: false,
     repeat: 'off',
-    isUpdatingLocal: false // Guard flag to prevent feedback loops
+    isUpdatingLocal: false
 };
 
 export function initRemote() {
     connectWebSocket();
     
-    // Bind the destination dropdown change event
     const destinationSelect = document.getElementById('playback-destination');
     if (destinationSelect) {
         destinationSelect.addEventListener('change', (e) => {
@@ -77,14 +87,18 @@ function setTarget(target) {
     remoteState.target = target;
     sendCommand({ type: 'SET_TARGET', target: target });
     
-    // Stop local playback if switching to phone
-    if (target === 'phone' && playerState.player && !playerState.player.paused) {
+    // Stop local playback when switching away from 'web' mode
+    if (target !== 'web' && playerState.player && !playerState.player.paused) {
         playerState.player.pause();
     }
+    
+    updateModeIndicator(target);
 }
 
 function handleStateUpdate(msg) {
     const state = msg;
+    const prevSongId = remoteState.song ? remoteState.song.id : null;
+    
     remoteState.target = state.target;
     remoteState.isPlaying = state.isPlaying;
     remoteState.position = state.position;
@@ -98,39 +112,53 @@ function handleStateUpdate(msg) {
         destinationSelect.value = state.target;
     }
 
+    // Sync visual destination buttons
+    document.querySelectorAll('.dest-option').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.value === state.target);
+    });
+    
+    updateModeIndicator(state.target);
+    updateShuffleRepeatUI(state.shuffle, state.repeat);
+
     if (state.target === 'phone') {
-        // PHONE IS THE ACTIVE PLAYER (Browser is just a remote)
-        // Ensure browser player is paused
+        // PHONE IS THE ACTIVE PLAYER — browser is just a remote
+        // Ensure browser audio is stopped
         if (playerState.player && !playerState.player.paused) {
             remoteState.isUpdatingLocal = true;
             playerState.player.pause();
             remoteState.isUpdatingLocal = false;
         }
 
-        // Update browser Now Playing UI to reflect the phone's player state
         if (state.song) {
             updateNowPlaying(state.song);
-            
-            // Highlight the active track in the list
             const index = trackListState.filteredSongs.findIndex(s => s.id === state.song.id);
-            if (index !== -1) {
-                updateActiveTrack(index);
-            }
+            if (index !== -1) updateActiveTrack(index);
         } else {
             updateNowPlaying(null);
         }
         
-        // Update play/pause buttons
         updatePlayPauseButton(state.isPlaying);
         
-        // Update progress bar
-        updateProgressBarUI(state.position, state.song ? state.song.duration : 0);
+        // Start clock-based fake seek for phone target
+        const songChanged = state.song && state.song.id !== fakeSeekState.songId;
+        if (state.song) {
+            if (songChanged || Math.abs(state.position - getFakePosition()) > 3000) {
+                startFakeSeek(state.song.id, state.position, state.song.duration, state.isPlaying);
+            } else if (state.isPlaying !== fakeSeekState.isPlaying) {
+                // Play/pause changed — update fake seek state
+                fakeSeekState.startPositionMs = getFakePosition();
+                fakeSeekState.startTimeMs = Date.now();
+                fakeSeekState.isPlaying = state.isPlaying;
+            }
+        } else {
+            stopFakeSeek();
+            updateProgressBarUI(0, 0);
+        }
         
-        // Update shuffle/repeat UI
-        updateShuffleRepeatUI(state.shuffle, state.repeat);
-    } else {
+    } else if (state.target === 'web') {
         // BROWSER IS THE ACTIVE PLAYER
-        // If the song changed, play it locally
+        stopFakeSeek();
+        
         if (state.song) {
             const localSongId = playerState.currentSong ? playerState.currentSong.id : null;
             if (localSongId !== state.song.id) {
@@ -139,7 +167,6 @@ function handleStateUpdate(msg) {
                 remoteState.isUpdatingLocal = false;
             }
             
-            // Sync play/pause
             if (playerState.player) {
                 if (state.isPlaying && playerState.player.paused) {
                     remoteState.isUpdatingLocal = true;
@@ -151,7 +178,6 @@ function handleStateUpdate(msg) {
                     remoteState.isUpdatingLocal = false;
                 }
                 
-                // Sync position if it drifts by more than 2 seconds
                 const diff = Math.abs(playerState.player.currentTime * 1000 - state.position);
                 if (diff > 2000) {
                     remoteState.isUpdatingLocal = true;
@@ -160,6 +186,47 @@ function handleStateUpdate(msg) {
                 }
             }
         }
+    } else {
+        // STANDALONE — no sync, just update the mode indicator, leave both players alone
+        stopFakeSeek();
+    }
+}
+
+// --- Fake seek (clock-based, for phone target mode) ---
+
+function startFakeSeek(songId, positionMs, durationMs, isPlaying) {
+    stopFakeSeek();
+    fakeSeekState = {
+        songId,
+        startPositionMs: positionMs,
+        startTimeMs: Date.now(),
+        durationMs,
+        isPlaying
+    };
+    tickFakeSeek();
+}
+
+function stopFakeSeek() {
+    if (fakeSeekAnimFrame) {
+        cancelAnimationFrame(fakeSeekAnimFrame);
+        fakeSeekAnimFrame = null;
+    }
+}
+
+function getFakePosition() {
+    if (!fakeSeekState.isPlaying) return fakeSeekState.startPositionMs;
+    const elapsed = Date.now() - fakeSeekState.startTimeMs;
+    return Math.min(fakeSeekState.startPositionMs + elapsed, fakeSeekState.durationMs);
+}
+
+function tickFakeSeek() {
+    if (!fakeSeekState.songId) return;
+    const pos = getFakePosition();
+    updateProgressBarUI(pos, fakeSeekState.durationMs);
+    
+    // Stop ticking at end of song
+    if (pos < fakeSeekState.durationMs || !fakeSeekState.isPlaying) {
+        fakeSeekAnimFrame = requestAnimationFrame(tickFakeSeek);
     }
 }
 
@@ -174,7 +241,6 @@ function updateProgressBarUI(positionMs, durationMs) {
     const durationSecs = durationMs / 1000;
     const pct = durationMs > 0 ? (positionMs / durationMs) * 100 : 0;
 
-    // Update time labels
     ['current-time', 'fullscreen-current-time'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerText = formatTime(positionSecs);
@@ -185,13 +251,11 @@ function updateProgressBarUI(positionMs, durationMs) {
         if (el) el.innerText = formatTime(durationSecs);
     });
 
-    // Update fills
     ['progress-fill', 'fullscreen-progress-fill', 'mini-progress-fill'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.width = `${pct}%`;
     });
 
-    // Update handles
     ['progress-handle', 'fullscreen-progress-handle'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.left = `${pct}%`;
@@ -199,7 +263,6 @@ function updateProgressBarUI(positionMs, durationMs) {
 }
 
 function updateShuffleRepeatUI(shuffleEnabled, repeatMode) {
-    // Shuffle UI
     const shuffleTitle = shuffleEnabled ? 'Shuffle: On' : 'Shuffle: Off';
     ['shuffle-btn', 'fs-shuffle-btn'].forEach(id => {
         const btn = document.getElementById(id);
@@ -209,7 +272,6 @@ function updateShuffleRepeatUI(shuffleEnabled, repeatMode) {
         }
     });
 
-    // Repeat UI
     const labels = { off: 'Repeat: Off', all: 'Repeat: All', one: 'Repeat: One' };
     const icons = { off: 'repeat.svg', all: 'repeat.svg', one: 'repeat-one.svg' };
     [{ btn: 'repeat-btn', icon: 'repeat-icon' }, { btn: 'fs-repeat-btn', icon: 'fs-repeat-icon' }].forEach(pair => {
@@ -244,7 +306,6 @@ export function setupLocalPlayerEventBroadcasts() {
     player.addEventListener('pause', sendStateUpdate);
     player.addEventListener('seeked', sendStateUpdate);
     player.addEventListener('timeupdate', () => {
-        // Throttle updates: only send every 1 second during playback to avoid clogging WS
         const currentSecs = Math.floor(player.currentTime);
         if (player.lastSentSecs !== currentSecs) {
             player.lastSentSecs = currentSecs;

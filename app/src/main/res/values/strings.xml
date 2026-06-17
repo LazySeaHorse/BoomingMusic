@@ -1017,4 +1017,7 @@
     <string name="media_server_playback_target_web">Web browser</string>
     <string name="media_server_address_title">Server Address</string>
     <string name="media_server_address_offline">Server is offline</string>
+    <string name="media_server_address_copied">Server address copied to clipboard</string>
+    <string name="media_server_playback_target_standalone">Standalone (no sync)</string>
+    <string name="media_server_controlled_by_web">Controlled by Mooseek</string>
 </resources>

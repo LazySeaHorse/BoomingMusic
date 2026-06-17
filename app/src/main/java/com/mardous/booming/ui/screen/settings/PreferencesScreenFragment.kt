@@ -110,6 +110,9 @@ import com.mardous.booming.util.USE_FOLDER_ART
 import com.mardous.booming.util.WHITELIST_ENABLED
 import com.mardous.booming.util.WIDGET_IMAGE_CORNER_RADIUS
 import com.mardous.booming.util.WIDGET_THIRD_LINE_CONTENT
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context as AndroidContext
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -156,6 +159,7 @@ class NetworkPreferencesFragment : PreferenceScreenFragment() {
         super.onViewCreated(view, savedInstanceState)
         syncPlaybackTarget()
         updateServerAddressSummary()
+        setupServerAddressClick()
     }
 
     override fun onSharedPreferenceChanged(preferences: SharedPreferences, key: String?) {
@@ -195,6 +199,22 @@ class NetworkPreferencesFragment : PreferenceScreenFragment() {
             addressPref.summary = "http://$ip:8080"
         } else {
             addressPref.summary = getString(R.string.media_server_address_offline)
+        }
+    }
+
+    private fun setupServerAddressClick() {
+        val addressPref = findPreference<Preference>("media_server_address") ?: return
+        addressPref.setOnPreferenceClickListener {
+            val sp = preferenceManager.sharedPreferences ?: return@setOnPreferenceClickListener true
+            val enabled = sp.getBoolean("media_server_enabled", false)
+            if (enabled) {
+                val ip = getIpAddress()
+                val url = "http://$ip:8080"
+                val clipboard = requireContext().getSystemService(AndroidContext.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Server URL", url))
+                requireContext().showToast(getString(R.string.media_server_address_copied))
+            }
+            true
         }
     }
 

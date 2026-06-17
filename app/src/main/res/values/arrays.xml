@@ -168,11 +168,13 @@
     <string-array name="pref_media_server_playback_target_entries">
         <item>@string/media_server_playback_target_phone</item>
         <item>@string/media_server_playback_target_web</item>
+        <item>@string/media_server_playback_target_standalone</item>
     </string-array>
 
     <string-array name="pref_media_server_playback_target_values">
         <item>phone</item>
         <item>web</item>
+        <item>standalone</item>
     </string-array>
 
     <string-array name="pref_language_names">

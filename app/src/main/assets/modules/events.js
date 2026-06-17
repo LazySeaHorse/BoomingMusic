@@ -5,13 +5,14 @@
 import { togglePlayPause, playNext, playPrevious, toggleShuffle, toggleRepeat } from './player.js';
 import { handleSearch, clearSearch, handleSort, loadSongs, initClusterize } from './trackList.js';
 import { setLyricsMode } from './lyrics.js';
-import { toggleSortMenu, openSettings, closeSettings, openFullscreenPlayer, closeFullscreenPlayer } from './ui.js';
+import { toggleSortMenu, openSettings, closeSettings, openFullscreenPlayer, closeFullscreenPlayer, updateModeIndicator } from './ui.js';
 import { initProgress } from './progress.js';
 import { isMobile } from './utils.js';
 import { playerState } from './player.js';
 import { trackListState } from './trackList.js';
 import { lyricsState } from './lyrics.js';
 import { applyTheme } from './theme.js';
+import { remoteState } from './remote.js';
 
 export async function initializeEventListeners() {
     // Initialize theme system with purple (index 0)
@@ -43,6 +44,23 @@ export async function initializeEventListeners() {
     // Settings
     document.getElementById('settings-btn').addEventListener('click', openSettings);
     document.getElementById('close-settings').addEventListener('click', closeSettings);
+
+    // Destination option buttons in settings modal
+    document.querySelectorAll('.dest-option').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const value = this.dataset.value;
+            // Update hidden select
+            const select = document.getElementById('playback-destination');
+            if (select) {
+                select.value = value;
+                // Dispatch change so remote.js setTarget() fires
+                select.dispatchEvent(new Event('change'));
+            }
+            // Update selected visual state
+            document.querySelectorAll('.dest-option').forEach(b => b.classList.remove('selected'));
+            this.classList.add('selected');
+        });
+    });
 
     // Playback controls
     document.getElementById('shuffle-btn').addEventListener('click', toggleShuffle);
@@ -111,6 +129,9 @@ export async function initializeEventListeners() {
 
     // Initialize progress bar
     initProgress();
+
+    // Set initial mode indicator from remoteState
+    updateModeIndicator(remoteState.target);
 
     // Load songs and initialize clusterize
     await loadSongs();

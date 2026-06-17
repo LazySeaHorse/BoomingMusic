@@ -20,12 +20,14 @@ object RemoteSyncState {
     fun setTarget(value: String?): String {
         val newTarget = when (value) {
             MediaServerPlaybackTarget.WEB -> MediaServerPlaybackTarget.WEB
+            MediaServerPlaybackTarget.STANDALONE -> MediaServerPlaybackTarget.STANDALONE
             else -> MediaServerPlaybackTarget.PHONE
         }
         val oldTarget = target
         val oldMuted = isMutedForWeb
 
         target = newTarget
+        // Only mute phone audio when WEB is the active player
         isMutedForWeb = newTarget == MediaServerPlaybackTarget.WEB
 
         if (oldMuted != isMutedForWeb) {

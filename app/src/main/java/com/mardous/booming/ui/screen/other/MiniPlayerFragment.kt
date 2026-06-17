@@ -17,7 +17,7 @@
 
 package com.mardous.booming.ui.screen.other
 
-import android.annotation.SuppressLint
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.style.ForegroundColorSpan
 import android.view.GestureDetector
@@ -35,21 +35,26 @@ import com.mardous.booming.extensions.isTablet
 import com.mardous.booming.extensions.launchAndRepeatWithViewLifecycle
 import com.mardous.booming.extensions.media.displayArtistName
 import com.mardous.booming.extensions.resources.*
+import com.mardous.booming.server.RemoteSyncState
 import com.mardous.booming.ui.component.base.SkipButtonTouchHandler
 import com.mardous.booming.ui.component.base.SkipButtonTouchHandler.Companion.DIRECTION_NEXT
 import com.mardous.booming.ui.component.base.SkipButtonTouchHandler.Companion.DIRECTION_PREVIOUS
 import com.mardous.booming.ui.screen.player.PlayerViewModel
+import com.mardous.booming.util.MEDIA_SERVER_PLAYBACK_TARGET
+import com.mardous.booming.util.MediaServerPlaybackTarget
 import com.mardous.booming.util.Preferences
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.activityViewModel
 import kotlin.math.abs
 
 class MiniPlayerFragment : Fragment(R.layout.fragment_mini_player),
-    View.OnClickListener, SkipButtonTouchHandler.Callback {
+    View.OnClickListener, SkipButtonTouchHandler.Callback, SharedPreferences.OnSharedPreferenceChangeListener {
 
     private val playerViewModel: PlayerViewModel by activityViewModel()
+    private val preferences: android.content.SharedPreferences by inject()
 
     private var _binding: FragmentMiniPlayerBinding? = null
     private val binding get() = _binding!!
@@ -104,6 +109,9 @@ class MiniPlayerFragment : Fragment(R.layout.fragment_mini_player),
         view.setOnTouchListener { _, event ->
             Preferences.miniPlayerSwipeToSkip && flingPlayBackController.onTouchEvent(event)
         }
+        updateRemoteBadge()
+        Preferences.registerOnSharedPreferenceChangeListener(this)
+        RemoteSyncState.onTargetChanged = { requireActivity().runOnUiThread { updateRemoteBadge() } }
     }
 
     fun setupImageStyle() {
@@ -163,9 +171,24 @@ class MiniPlayerFragment : Fragment(R.layout.fragment_mini_player),
     }
 
     override fun onDestroyView() {
+        Preferences.unregisterOnSharedPreferenceChangeListener(this)
         disposable?.dispose()
         super.onDestroyView()
         _binding = null
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String?) {
+        if (key == "media_server_enabled" || key == MEDIA_SERVER_PLAYBACK_TARGET) {
+            updateRemoteBadge()
+        }
+    }
+
+    private fun updateRemoteBadge() {
+        val enabled = preferences.getBoolean("media_server_enabled", false)
+        val target = RemoteSyncState.target
+        val badge = _binding?.remoteControlBadge ?: return
+        val shouldShow = enabled && target == MediaServerPlaybackTarget.WEB
+        badge.isVisible = shouldShow
     }
 
     private fun updatePlayPause(isPlaying: Boolean, buttonStyle: NowPlayingButtonStyle) {

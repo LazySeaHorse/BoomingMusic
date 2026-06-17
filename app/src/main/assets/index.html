@@ -54,6 +54,9 @@
                     <div class="now-playing-artist" id="now-playing-artist"></div>
                 </div>
 
+                <!-- Mode indicator chip -->
+                <div id="mode-indicator" class="mode-indicator mode-phone">📱 Controlled by phone</div>
+
                 <audio id="player" style="display: none;"></audio>
 
                 <!-- Custom progress bar -->
@@ -178,17 +181,50 @@
             </div>
         </div>
 
+        <!-- Settings Modal -->
         <div id="settings-modal" class="modal">
             <div class="modal-content">
-                <h2>Settings</h2>
-                <div class="settings-group" style="margin: 20px 0;">
-                    <label for="playback-destination" style="display: block; margin-bottom: 8px; font-weight: 500;">Playback Destination:</label>
-                    <select id="playback-destination" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; background: #fff; color: #000;">
-                        <option value="web" selected>This Device (Web Browser)</option>
-                        <option value="phone">Local Device (Phone Speakers)</option>
-                    </select>
+                <div class="modal-header">
+                    <h2 class="modal-title">Settings</h2>
                 </div>
-                <button id="close-settings" style="width: 100%; padding: 10px; border: none; border-radius: 4px; background: var(--primary-color); color: #fff; cursor: pointer; font-weight: 600;">Close</button>
+                <div class="modal-body">
+                    <div class="settings-field">
+                        <label class="settings-label" for="playback-destination">Playback Destination</label>
+                        <p class="settings-hint">Where should audio actually play?</p>
+                        <div class="destination-options" id="destination-options">
+                            <button class="dest-option selected" data-value="phone" id="dest-phone">
+                                <span class="dest-icon">📱</span>
+                                <span class="dest-info">
+                                    <span class="dest-name">Phone</span>
+                                    <span class="dest-desc">Audio plays on the phone. This browser is a remote.</span>
+                                </span>
+                            </button>
+                            <button class="dest-option" data-value="web" id="dest-web">
+                                <span class="dest-icon">🌐</span>
+                                <span class="dest-info">
+                                    <span class="dest-name">This Browser</span>
+                                    <span class="dest-desc">Audio plays here. Phone follows along.</span>
+                                </span>
+                            </button>
+                            <button class="dest-option" data-value="standalone" id="dest-standalone">
+                                <span class="dest-icon">🎵</span>
+                                <span class="dest-info">
+                                    <span class="dest-name">Standalone</span>
+                                    <span class="dest-desc">No sync. Each device plays independently.</span>
+                                </span>
+                            </button>
+                        </div>
+                        <!-- Hidden select for backward compat with remote.js -->
+                        <select id="playback-destination" style="display:none;">
+                            <option value="phone">Phone</option>
+                            <option value="web">This Browser</option>
+                            <option value="standalone">Standalone</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="close-settings" class="modal-close-btn">Done</button>
+                </div>
             </div>
         </div>
     </div>

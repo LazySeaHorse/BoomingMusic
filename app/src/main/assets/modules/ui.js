@@ -68,6 +68,25 @@ export function updateActiveTrack(index) {
     }
 }
 
+/**
+ * Updates the persistent mode indicator chip in the player section.
+ * target: 'phone' | 'web' | 'standalone'
+ */
+export function updateModeIndicator(target) {
+    const indicator = document.getElementById('mode-indicator');
+    if (!indicator) return;
+    
+    const configs = {
+        phone: { text: '📱 Controlled by phone', cls: 'mode-phone' },
+        web:   { text: '🌐 Playing here',         cls: 'mode-web'   },
+        standalone: { text: '🎵 Standalone',        cls: 'mode-standalone' }
+    };
+    
+    const cfg = configs[target] || configs.phone;
+    indicator.textContent = cfg.text;
+    indicator.className = 'mode-indicator ' + cfg.cls;
+}
+
 export function openFullscreenPlayer() {
     const fsPlayer = document.getElementById('fullscreen-player');
     fsPlayer.classList.add('open');
@@ -83,11 +102,20 @@ export function closeFullscreenPlayer() {
 }
 
 export function openSettings() {
-    document.getElementById('settings-modal').style.display = 'block';
+    const modal = document.getElementById('settings-modal');
+    modal.classList.add('open');
+
+    // Highlight the currently active destination button
+    const select = document.getElementById('playback-destination');
+    if (select) {
+        document.querySelectorAll('.dest-option').forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.value === select.value);
+        });
+    }
 }
 
 export function closeSettings() {
-    document.getElementById('settings-modal').style.display = 'none';
+    document.getElementById('settings-modal').classList.remove('open');
 }
 
 export function toggleSortMenu() {
