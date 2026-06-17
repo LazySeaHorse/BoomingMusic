@@ -17,6 +17,7 @@
 
 package com.mardous.booming.ui.screen.other
 
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.style.ForegroundColorSpan

@@ -184,8 +184,8 @@ android {
             isEnable = !isBuildingBundle
 
             reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-            isUniversalApk = true
+            include("arm64-v8a")
+            isUniversalApk = false
         }
     }
     packaging {
