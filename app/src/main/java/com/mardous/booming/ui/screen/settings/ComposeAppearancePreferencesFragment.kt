@@ -16,8 +16,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -260,7 +258,7 @@ fun AppearanceSettingsView(
                                     ) {
                                         if (basicColorSeed == colorVal.toInt()) {
                                             Icon(
-                                                imageVector = Icons.Default.Check,
+                                                painter = painterResource(id = R.drawable.ic_check_24dp),
                                                 contentDescription = name,
                                                 tint = Color.White,
                                                 modifier = Modifier.size(20.dp)
