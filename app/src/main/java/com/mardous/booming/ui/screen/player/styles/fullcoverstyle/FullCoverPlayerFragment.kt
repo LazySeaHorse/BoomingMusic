@@ -66,9 +66,6 @@ class FullCoverPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_cover_p
     override val playerControlsFragment: AbsPlayerControlsFragment
         get() = controlsFragment
 
-    override val playerToolbar: androidx.appcompat.widget.Toolbar
-        get() = binding.toolbar
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentFullCoverPlayerBinding.bind(view)

@@ -697,6 +697,17 @@ abstract class AbsPlayerFragment(@LayoutRes layoutRes: Int) : Fragment(layoutRes
             }
         }
     }
+
+    protected fun updateMediaServerSubtitle() {
+        val toolbar = playerToolbar ?: return
+        val enabled = Preferences.isMediaServerEnabled
+        val target = Preferences.mediaServerPlaybackTarget
+        if (enabled && target == MediaServerPlaybackTarget.WEB) {
+            toolbar.subtitle = getString(R.string.media_server_controlled_by_web)
+        } else {
+            toolbar.subtitle = null
+        }
+    }
 }
 
 fun goToArtist(activity: Activity, song: Song) {
@@ -756,17 +767,6 @@ fun goToDestination(
             }
             findNavController(R.id.fragment_container)
                 .navigate(destinationId, args, navOptions)
-        }
-    }
-
-    protected fun updateMediaServerSubtitle() {
-        val toolbar = playerToolbar ?: return
-        val enabled = Preferences.isMediaServerEnabled
-        val target = Preferences.mediaServerPlaybackTarget
-        if (enabled && target == MediaServerPlaybackTarget.WEB) {
-            toolbar.subtitle = getString(R.string.media_server_controlled_by_web)
-        } else {
-            toolbar.subtitle = null
         }
     }
 }
