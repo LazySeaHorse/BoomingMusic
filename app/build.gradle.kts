@@ -126,6 +126,15 @@ android {
         }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("gradle/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     val signingProperties = getProperties("keystore.properties")
 
     val releaseSigning = if (signingProperties != null) {
