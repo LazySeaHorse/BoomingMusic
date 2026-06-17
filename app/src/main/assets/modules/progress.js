@@ -4,6 +4,7 @@
 
 import { formatTime } from './utils.js';
 import { playerState } from './player.js';
+import { remoteState, sendCommand } from './remote.js';
 
 export const progressState = {
     isSeeking: false
@@ -83,7 +84,12 @@ function seek(e) {
     const rect = progressBar.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 
-    if (playerState.player.duration) {
+    if (remoteState.target === 'phone') {
+        const duration = remoteState.song ? remoteState.song.duration : 0;
+        if (duration > 0) {
+            sendCommand({ type: 'SEEK', position: Math.floor(percent * duration) });
+        }
+    } else if (playerState.player.duration) {
         playerState.player.currentTime = percent * playerState.player.duration;
         updateProgress();
     }
@@ -93,7 +99,13 @@ function seekFullscreen(e) {
     const fsProgressBar = document.getElementById('fullscreen-progress-bar');
     const rect = fsProgressBar.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    if (playerState.player.duration) {
+    
+    if (remoteState.target === 'phone') {
+        const duration = remoteState.song ? remoteState.song.duration : 0;
+        if (duration > 0) {
+            sendCommand({ type: 'SEEK', position: Math.floor(percent * duration) });
+        }
+    } else if (playerState.player.duration) {
         playerState.player.currentTime = percent * playerState.player.duration;
         updateProgress();
     }
@@ -104,7 +116,13 @@ function seekFullscreenTouch(e) {
     const touch = e.touches[0];
     const rect = fsProgressBar.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-    if (playerState.player.duration) {
+    
+    if (remoteState.target === 'phone') {
+        const duration = remoteState.song ? remoteState.song.duration : 0;
+        if (duration > 0) {
+            sendCommand({ type: 'SEEK', position: Math.floor(percent * duration) });
+        }
+    } else if (playerState.player.duration) {
         playerState.player.currentTime = percent * playerState.player.duration;
         updateProgress();
     }

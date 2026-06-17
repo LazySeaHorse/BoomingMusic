@@ -5,25 +5,39 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import fi.iki.elonen.NanoHTTPD
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.mardous.booming.data.local.repository.SongRepository
+import com.mardous.booming.playback.PlaybackService
+import com.mardous.booming.ui.screen.MainActivity
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
+import io.ktor.server.http.content.*
+import io.ktor.server.plugins.partialcontent.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.server.websocket.*
+import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import com.mardous.booming.data.local.repository.SongRepository
-import com.mardous.booming.ui.screen.MainActivity
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
-import java.io.FileInputStream
-import java.io.IOException
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -40,17 +54,67 @@ data class ServerSong(
     val size: Long
 )
 
+@Serializable
+data class SocketState(
+    val type: String,
+    val target: String,
+    val isPlaying: Boolean,
+    val position: Long,
+    val shuffle: Boolean,
+    val repeat: String,
+    val song: ServerSong?
+)
+
+@Serializable
+data class SocketCommand(
+    val type: String,
+    val id: Long? = null,
+    val position: Long? = null,
+    val volume: Float? = null,
+    val enabled: Boolean? = null,
+    val mode: String? = null,
+    val target: String? = null,
+    val isPlaying: Boolean? = null
+)
+
 class MediaServerService : Service(), KoinComponent {
     
-    private var server: MediaServer? = null
+    private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val songRepository: SongRepository by inject()
     
+    private var mediaController: MediaController? = null
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    
+    private val webSocketSessions = java.util.Collections.synchronizedList(mutableListOf<WebSocketServerSession>())
+    private val json = Json { ignoreUnknownKeys = true }
+    
     companion object {
         const val CHANNEL_ID = "BoomingServerChannel"
-        const val NOTIFICATION_ID = 2390 // Unique notification ID
+        const val NOTIFICATION_ID = 2390
         const val ACTION_LOG = "com.mardous.booming.ACTION_LOG"
         const val EXTRA_LOG = "log_message"
+    }
+    
+    private val playerListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            broadcastState()
+        }
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            broadcastState()
+        }
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            broadcastState()
+        }
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            broadcastState()
+        }
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            broadcastState()
+        }
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            broadcastState()
+        }
     }
     
     override fun onCreate() {
@@ -58,20 +122,311 @@ class MediaServerService : Service(), KoinComponent {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         
-        server = MediaServer(this, songRepository, 8080).apply {
+        // Start Ktor server
+        startKtorServer()
+        
+        // Connect MediaController to control & monitor playback
+        connectMediaController()
+    }
+    
+    private fun startKtorServer() {
+        server = embeddedServer(CIO, port = 8080) {
+            install(WebSockets)
+            install(PartialContent)
+            routing {
+                // Serve index.html
+                get("/") {
+                    call.respondAsset("index.html", "text/html")
+                }
+                
+                // Serve static assets dynamically from app assets
+                get("/{filename...}") {
+                    val filename = call.parameters.getAll("filename")?.joinToString("/") ?: ""
+                    val mimeType = getMimeTypeForAsset(filename)
+                    if (mimeType != null) {
+                        call.respondAsset(filename, mimeType)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound)
+                    }
+                }
+                
+                // Serve song list JSON
+                get("/list") {
+                    try {
+                        val songs = songRepository.songs().map { song ->
+                            ServerSong(
+                                id = song.id,
+                                title = song.title,
+                                artist = song.artistName,
+                                album = song.albumName,
+                                duration = song.duration,
+                                path = URLEncoder.encode(song.data, "UTF-8"),
+                                dateAdded = song.dateAdded,
+                                dateModified = song.rawDateModified,
+                                size = song.size
+                            )
+                        }
+                        val jsonData = json.encodeToString(songs)
+                        call.respondText(jsonData, ContentType.Application.Json)
+                    } catch (e: Exception) {
+                        sendLog("Error fetching songs: ${e.message}")
+                        call.respondText("Error: ${e.message}", status = HttpStatusCode.InternalServerError)
+                    }
+                }
+                
+                // Stream song endpoint (seekable via PartialContent plugin)
+                get("/stream/{encodedPath}") {
+                    val encodedPath = call.parameters["encodedPath"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val path = URLDecoder.decode(encodedPath, "UTF-8")
+                    val file = File(path)
+                    if (file.exists()) {
+                        call.respond(LocalFileContent(file))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound)
+                    }
+                }
+                
+                // WebSocket casting & remote control channel
+                webSocket("/ws") {
+                    synchronized(webSocketSessions) { webSocketSessions.add(this) }
+                    try {
+                        // Send current player state on connect
+                        val stateStr = getSerializedState()
+                        if (stateStr != null) {
+                            send(Frame.Text(stateStr))
+                        }
+                        
+                        for (frame in incoming) {
+                            if (frame is Frame.Text) {
+                                val message = frame.readText()
+                                try {
+                                    val cmd = json.decodeFromString<SocketCommand>(message)
+                                    handleSocketCommand(cmd)
+                                } catch (e: Exception) {
+                                    Log.e("BoomingServer", "Error parsing command: $message", e)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("BoomingServer", "WebSocket error", e)
+                    } finally {
+                        synchronized(webSocketSessions) { webSocketSessions.remove(this) }
+                    }
+                }
+            }
+        }.start(wait = false)
+    }
+    
+    private suspend fun ApplicationCall.respondAsset(filename: String, contentType: String) {
+        try {
+            val inputStream = this@MediaServerService.assets.open(filename)
+            respondOutputStream(ContentType.parse(contentType)) {
+                inputStream.copyTo(this)
+            }
+        } catch (e: Exception) {
+            respond(HttpStatusCode.NotFound)
+        }
+    }
+    
+    private fun getMimeTypeForAsset(filename: String): String? {
+        val ext = filename.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "html" -> "text/html"
+            "css" -> "text/css"
+            "js" -> "application/javascript"
+            "svg" -> "image/svg+xml"
+            "json" -> "application/json"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "woff" -> "font/woff"
+            "woff2" -> "font/woff2"
+            "ttf" -> "font/ttf"
+            else -> null
+        }
+    }
+    
+    private fun connectMediaController() {
+        val sessionToken = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+        controllerFuture?.addListener({
             try {
-                start()
-                Log.d("BoomingServer", "Server started on port 8080")
-                sendLog("Server started on port 8080")
-            } catch (e: IOException) {
-                Log.e("BoomingServer", "Failed to start server", e)
-                sendLog("Failed to start server: ${e.message}")
+                mediaController = controllerFuture?.get()
+                mediaController?.addListener(playerListener)
+                Log.d("BoomingServer", "MediaController connected")
+                broadcastState()
+            } catch (e: Exception) {
+                Log.e("BoomingServer", "Failed to get MediaController", e)
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+    
+    private fun handleSocketCommand(cmd: SocketCommand) {
+        val controller = mediaController ?: return
+        serviceScope.launch(Dispatchers.Main) {
+            when (cmd.type) {
+                "SET_TARGET" -> {
+                    cmd.target?.let { target ->
+                        RemoteSyncState.target = target
+                        RemoteSyncState.isMutedForWeb = (target == "web")
+                        broadcastState()
+                    }
+                }
+                "PLAY" -> {
+                    if (!controller.isPlaying) {
+                        controller.play()
+                    }
+                }
+                "PAUSE" -> {
+                    if (controller.isPlaying) {
+                        controller.pause()
+                    }
+                }
+                "TOGGLE_PLAY" -> {
+                    if (controller.isPlaying) controller.pause() else controller.play()
+                }
+                "NEXT" -> {
+                    controller.seekToNext()
+                }
+                "PREV" -> {
+                    controller.seekToPrevious()
+                }
+                "SEEK" -> {
+                    cmd.position?.let { pos ->
+                        controller.seekTo(pos)
+                    }
+                }
+                "SELECT" -> {
+                    cmd.id?.let { songId ->
+                        try {
+                            val song = songRepository.song(songId)
+                            controller.setMediaItem(song.toMediaItem())
+                            controller.prepare()
+                            controller.play()
+                        } catch (e: Exception) {
+                            Log.e("BoomingServer", "Failed to select song", e)
+                        }
+                    }
+                }
+                "SET_SHUFFLE" -> {
+                    cmd.enabled?.let { enabled ->
+                        controller.shuffleModeEnabled = enabled
+                    }
+                }
+                "SET_REPEAT" -> {
+                    cmd.mode?.let { mode ->
+                        val repeatMode = when (mode) {
+                            "all" -> Player.REPEAT_MODE_ALL
+                            "one" -> Player.REPEAT_MODE_ONE
+                            else -> Player.REPEAT_MODE_OFF
+                        }
+                        controller.repeatMode = repeatMode
+                    }
+                }
+                "WEB_STATE" -> {
+                    if (RemoteSyncState.target == "web") {
+                        cmd.isPlaying?.let { isPlaying ->
+                            if (isPlaying != controller.isPlaying) {
+                                if (isPlaying) controller.play() else controller.pause()
+                            }
+                        }
+                        cmd.position?.let { pos ->
+                            if (Math.abs(controller.currentPosition - pos) > 2000) {
+                                controller.seekTo(pos)
+                            }
+                        }
+                        cmd.id?.let { songId ->
+                            val currentItem = controller.currentMediaItem
+                            if (currentItem?.mediaId != songId.toString()) {
+                                try {
+                                    val song = songRepository.song(songId)
+                                    controller.setMediaItem(song.toMediaItem())
+                                    controller.prepare()
+                                    if (cmd.isPlaying == true) controller.play() else controller.pause()
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun getSerializedState(): String? {
+        val controller = mediaController ?: return null
+        val currentItem = controller.currentMediaItem
+        val songId = currentItem?.mediaId?.toLongOrNull()
+        val song = songId?.let { id ->
+            try {
+                songRepository.song(id)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        val serverSong = song?.let {
+            ServerSong(
+                id = it.id,
+                title = it.title,
+                artist = it.artistName,
+                album = it.albumName,
+                duration = it.duration,
+                path = URLEncoder.encode(it.data, "UTF-8"),
+                dateAdded = it.dateAdded,
+                dateModified = it.rawDateModified,
+                size = it.size
+            )
+        }
+        val repeatModeStr = when (controller.repeatMode) {
+            Player.REPEAT_MODE_ALL -> "all"
+            Player.REPEAT_MODE_ONE -> "one"
+            else -> "off"
+        }
+        
+        val state = SocketState(
+            type = "STATE",
+            target = RemoteSyncState.target,
+            isPlaying = controller.isPlaying,
+            position = controller.currentPosition,
+            shuffle = controller.shuffleModeEnabled,
+            repeat = repeatModeStr,
+            song = serverSong
+        )
+        return json.encodeToString(state)
+    }
+    
+    private fun broadcastState() {
+        val stateStr = getSerializedState() ?: return
+        broadcastMessage(stateStr)
+    }
+    
+    private fun broadcastMessage(message: String) {
+        serviceScope.launch {
+            val sessions = synchronized(webSocketSessions) { webSocketSessions.toList() }
+            for (session in sessions) {
+                try {
+                    session.send(Frame.Text(message))
+                } catch (e: Exception) {
+                    // ignore
+                }
             }
         }
     }
     
     override fun onDestroy() {
-        server?.stop()
+        server?.stop(1000, 2000)
+        server = null
+        
+        serviceScope.launch(Dispatchers.Main) {
+            mediaController?.removeListener(playerListener)
+            mediaController?.release()
+            mediaController = null
+            controllerFuture?.cancel(true)
+            controllerFuture = null
+        }
+        
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -149,164 +504,5 @@ class MediaServerService : Service(), KoinComponent {
             putExtra(EXTRA_LOG, message)
         }
         sendBroadcast(intent)
-    }
-    
-    inner class MediaServer(
-        private val context: Context,
-        private val repository: SongRepository,
-        port: Int
-    ) : NanoHTTPD(port) {
-        
-        private val json = Json { ignoreUnknownKeys = true }
-        
-        override fun serve(session: IHTTPSession): Response {
-            val uri = session.uri
-            val method = session.method
-            
-            sendLog("$method $uri")
-            
-            val response = when {
-                uri == "/" -> serveAsset("index.html", "text/html")
-                uri == "/list" -> handleList()
-                uri.startsWith("/stream/") -> handleStream(uri.substring(8), session)
-                else -> {
-                    // Serve static assets (js, css, svg, etc.) from the assets folder
-                    val filename = uri.trimStart('/')
-                    val mimeType = getMimeTypeForAsset(filename)
-                    if (mimeType != null) {
-                        serveAsset(filename, mimeType)
-                    } else {
-                        newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
-                    }
-                }
-            }
-            
-            return addCorsHeaders(response)
-        }
-        
-        private fun getMimeTypeForAsset(filename: String): String? {
-            val ext = filename.substringAfterLast('.', "").lowercase()
-            return when (ext) {
-                "html" -> "text/html"
-                "css" -> "text/css"
-                "js" -> "application/javascript"
-                "svg" -> "image/svg+xml"
-                "json" -> "application/json"
-                "png" -> "image/png"
-                "jpg", "jpeg" -> "image/jpeg"
-                "gif" -> "image/gif"
-                "webp" -> "image/webp"
-                "woff" -> "font/woff"
-                "woff2" -> "font/woff2"
-                "ttf" -> "font/ttf"
-                else -> null
-            }
-        }
-        
-        private fun addCorsHeaders(response: Response): Response {
-            response.addHeader("Access-Control-Allow-Origin", "*")
-            response.addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            response.addHeader("Access-Control-Allow-Headers", "Content-Type, Range")
-            response.addHeader("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges")
-            return response
-        }
-        
-        private fun serveAsset(filename: String, mimeType: String): Response {
-            return try {
-                val input = context.assets.open(filename)
-                newFixedLengthResponse(Response.Status.OK, mimeType, input, input.available().toLong())
-            } catch (e: IOException) {
-                newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
-            }
-        }
-        
-        private fun handleList(): Response {
-            return runBlocking {
-                try {
-                    val songs = repository.songs().map { song ->
-                        ServerSong(
-                            id = song.id,
-                            title = song.title,
-                            artist = song.artistName,
-                            album = song.albumName,
-                            duration = song.duration,
-                            path = URLEncoder.encode(song.data, "UTF-8"),
-                            dateAdded = song.dateAdded,
-                            dateModified = song.rawDateModified,
-                            size = song.size
-                        )
-                    }
-                    val jsonData = json.encodeToString(songs)
-                    newFixedLengthResponse(Response.Status.OK, "application/json", jsonData)
-                } catch (e: Exception) {
-                    sendLog("Error fetching songs: ${e.message}")
-                    newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
-                }
-            }
-        }
-        
-        private fun handleStream(encodedPath: String, session: IHTTPSession): Response {
-            val path = URLDecoder.decode(encodedPath, "UTF-8")
-            val file = File(path)
-            
-            if (!file.exists()) {
-                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "File not found")
-            }
-            
-            val mimeType = when (file.extension.lowercase()) {
-                "mp3" -> "audio/mpeg"
-                "m4a" -> "audio/mp4"
-                "ogg" -> "audio/ogg"
-                "flac" -> "audio/flac"
-                else -> "audio/*"
-            }
-            
-            val fileLength = file.length()
-            val range = session.headers["range"]
-            
-            return if (range != null) {
-                val ranges = parseRange(range, fileLength)
-                if (ranges != null) {
-                    val (start, end) = ranges
-                    val contentLength = end - start + 1
-                    
-                    val response = newFixedLengthResponse(
-                        Response.Status.PARTIAL_CONTENT,
-                        mimeType,
-                        FileInputStream(file).apply { skip(start) },
-                        contentLength
-                    )
-                    
-                    response.addHeader("Content-Range", "bytes $start-$end/$fileLength")
-                    response.addHeader("Accept-Ranges", "bytes")
-                    response
-                } else {
-                    newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, "text/plain", "Invalid range")
-                }
-            } else {
-                val response = newFixedLengthResponse(
-                    Response.Status.OK,
-                    mimeType,
-                    FileInputStream(file),
-                    fileLength
-                )
-                response.addHeader("Accept-Ranges", "bytes")
-                response
-            }
-        }
-        
-        private fun parseRange(range: String, fileLength: Long): Pair<Long, Long>? {
-            val regex = "bytes=(\\d*)-(\\d*)".toRegex()
-            val match = regex.find(range) ?: return null
-            
-            val start = match.groupValues[1].toLongOrNull() ?: 0
-            val end = match.groupValues[2].toLongOrNull() ?: (fileLength - 1)
-            
-            return if (start <= end && end < fileLength) {
-                start to end
-            } else {
-                null
-            }
-        }
     }
 }

@@ -1135,7 +1135,8 @@ class PlaybackService :
     }
 
     private fun restorePlayerVolume() {
-        player.volume = equalizerManager.volumeState.value.currentVolume
+        val multiplier = if (com.mardous.booming.server.RemoteSyncState.isMutedForWeb) 0f else 1f
+        player.volume = equalizerManager.volumeState.value.currentVolume * multiplier
     }
 
     private fun prepareEqualizerAndSoundSettings() {
@@ -1145,7 +1146,13 @@ class PlaybackService :
         serviceScope.launch {
             equalizerManager.volumeState.collect { volume ->
                 cancelSleepTimerFadeOut()
-                player.volume = volume.currentVolume
+                val multiplier = if (com.mardous.booming.server.RemoteSyncState.isMutedForWeb) 0f else 1f
+                player.volume = volume.currentVolume * multiplier
+            }
+        }
+        com.mardous.booming.server.RemoteSyncState.onMuteStateChanged = {
+            serviceScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                restorePlayerVolume()
             }
         }
         serviceScope.launch {

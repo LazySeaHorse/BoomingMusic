@@ -4,6 +4,7 @@
 
 import { updatePlayPauseButton, updateActiveTrack } from './ui.js';
 import { cycleTheme } from './theme.js';
+import { remoteState, sendCommand } from './remote.js';
 
 export const playerState = {
     currentSong: null,
@@ -20,6 +21,11 @@ export function initPlayer() {
 }
 
 export function playSong(song, filteredSongs) {
+    if (remoteState.target === 'phone' && !remoteState.isUpdatingLocal) {
+        sendCommand({ type: 'SELECT', id: song.id });
+        return;
+    }
+    
     playerState.currentSong = song;
     
     // Cycle to next theme when a new song plays
@@ -38,6 +44,10 @@ export function playSong(song, filteredSongs) {
 }
 
 export function playNext(filteredSongs) {
+    if (remoteState.target === 'phone') {
+        sendCommand({ type: 'NEXT' });
+        return;
+    }
     if (!playerState.currentSong || filteredSongs.length === 0) return;
 
     if (playerState.shuffleEnabled) {
@@ -68,6 +78,10 @@ export function playNext(filteredSongs) {
 }
 
 export function playPrevious(filteredSongs) {
+    if (remoteState.target === 'phone') {
+        sendCommand({ type: 'PREV' });
+        return;
+    }
     if (!playerState.currentSong || filteredSongs.length === 0) return;
 
     // If more than 3 seconds into the song, restart it
@@ -97,6 +111,10 @@ export function playPrevious(filteredSongs) {
 }
 
 export function togglePlayPause() {
+    if (remoteState.target === 'phone') {
+        sendCommand({ type: 'TOGGLE_PLAY' });
+        return;
+    }
     if (playerState.player.paused) {
         playerState.player.play();
     } else {
@@ -105,6 +123,10 @@ export function togglePlayPause() {
 }
 
 export function toggleShuffle() {
+    if (remoteState.target === 'phone') {
+        sendCommand({ type: 'SET_SHUFFLE', enabled: !remoteState.shuffle });
+        return;
+    }
     playerState.shuffleEnabled = !playerState.shuffleEnabled;
     if (playerState.shuffleEnabled) {
         playerState.shuffleID = Math.floor(Math.random() * 2147483647);
@@ -121,6 +143,12 @@ export function toggleShuffle() {
 }
 
 export function toggleRepeat() {
+    if (remoteState.target === 'phone') {
+        const modes = ['off', 'all', 'one'];
+        const nextMode = modes[(modes.indexOf(remoteState.repeat) + 1) % modes.length];
+        sendCommand({ type: 'SET_REPEAT', mode: nextMode });
+        return;
+    }
     const modes = ['off', 'all', 'one'];
     const labels = { off: 'Repeat: Off', all: 'Repeat: All', one: 'Repeat: One' };
     const icons = { off: 'repeat.svg', all: 'repeat.svg', one: 'repeat-one.svg' };
