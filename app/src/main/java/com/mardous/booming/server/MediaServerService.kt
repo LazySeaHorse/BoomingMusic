@@ -106,15 +106,42 @@ class MediaServerService : Service(), KoinComponent {
     }
     
     private fun getIpAddress(): String {
-        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val ipAddress = wifiManager.connectionInfo.ipAddress
-        return String.format(
-            "%d.%d.%d.%d",
-            ipAddress and 0xff,
-            ipAddress shr 8 and 0xff,
-            ipAddress shr 16 and 0xff,
-            ipAddress shr 24 and 0xff
-        )
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            val ipList = mutableListOf<Pair<String, String>>()
+            for (intf in interfaces) {
+                if (!intf.isUp || intf.isLoopback) continue
+                val addrs = intf.inetAddresses
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address && !addr.isLinkLocalAddress) {
+                        val host = addr.hostAddress ?: continue
+                        ipList.add(intf.name to host)
+                    }
+                }
+            }
+            
+            val preferredInterfaces = listOf("wlan", "ap", "softap", "rndis")
+            for (pref in preferredInterfaces) {
+                val found = ipList.find { it.first.contains(pref, ignoreCase = true) }
+                if (found != null) {
+                    return found.second
+                }
+            }
+            
+            for (ipPair in ipList) {
+                val ip = ipPair.second
+                if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) {
+                    return ip
+                }
+            }
+            
+            if (ipList.isNotEmpty()) {
+                return ipList.first().second
+            }
+        } catch (ex: Exception) {
+            Log.e("BoomingServer", "Error getting IP address", ex)
+        }
+        return "0.0.0.0"
     }
     
     private fun sendLog(message: String) {
