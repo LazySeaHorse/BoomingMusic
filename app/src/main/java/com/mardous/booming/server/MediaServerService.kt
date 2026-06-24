@@ -93,7 +93,23 @@ class MediaServerService : Service(), KoinComponent {
     
     private val webSocketSessions = java.util.Collections.synchronizedList(mutableListOf<WebSocketServerSession>())
     private val json = Json { ignoreUnknownKeys = true }
-    private val remoteTargetChangedCallback = { broadcastState() }
+
+    @Volatile
+    private var webSongId: Long? = null
+    @Volatile
+    private var lastSetSongId: Long? = null
+
+    private val remoteTargetChangedCallback = {
+        if (RemoteSyncState.target == MediaServerPlaybackTarget.WEB) {
+            serviceScope.launch(Dispatchers.Main) {
+                val currentItem = mediaController?.currentMediaItem
+                webSongId = currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+                broadcastState()
+            }
+        } else {
+            broadcastState()
+        }
+    }
     
     companion object {
         const val CHANNEL_ID = "BoomingServerChannel"
@@ -104,6 +120,13 @@ class MediaServerService : Service(), KoinComponent {
     
     private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val songId = mediaItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+            if (RemoteSyncState.target == MediaServerPlaybackTarget.WEB) {
+                if (songId != null) {
+                    webSongId = songId
+                    lastSetSongId = songId
+                }
+            }
             broadcastState()
         }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -265,6 +288,10 @@ class MediaServerService : Service(), KoinComponent {
                 mediaController = controllerFuture?.get()
                 mediaController?.addListener(playerListener)
                 Log.d("BoomingServer", "MediaController connected")
+                if (RemoteSyncState.target == MediaServerPlaybackTarget.WEB) {
+                    val currentItem = mediaController?.currentMediaItem
+                    webSongId = currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+                }
                 broadcastState()
             } catch (e: Exception) {
                 Log.e("BoomingServer", "Failed to get MediaController", e)
@@ -310,6 +337,7 @@ class MediaServerService : Service(), KoinComponent {
                 }
                 "SELECT" -> {
                     cmd.id?.let { songId ->
+                        lastSetSongId = songId
                         try {
                             val song = songRepository.song(songId)
                             controller.setMediaItem(song.toMediaItem())
@@ -337,20 +365,12 @@ class MediaServerService : Service(), KoinComponent {
                 }
                 "WEB_STATE" -> {
                     if (RemoteSyncState.target == MediaServerPlaybackTarget.WEB) {
-                        cmd.isPlaying?.let { isPlaying ->
-                            if (isPlaying != controller.isPlaying) {
-                                if (isPlaying) controller.play() else controller.pause()
-                            }
-                        }
-                        cmd.position?.let { pos ->
-                            if (Math.abs(controller.currentPosition - pos) > 2000) {
-                                controller.seekTo(pos)
-                            }
-                        }
                         cmd.id?.let { songId ->
+                            webSongId = songId
                             val currentItem = controller.currentMediaItem
                             val currentSongId = currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
-                            if (currentSongId != songId) {
+                            if (currentSongId != songId && lastSetSongId != songId) {
+                                lastSetSongId = songId
                                 try {
                                     val song = songRepository.song(songId)
                                     controller.setMediaItem(song.toMediaItem())
@@ -359,6 +379,16 @@ class MediaServerService : Service(), KoinComponent {
                                 } catch (e: Exception) {
                                     // ignore
                                 }
+                            }
+                        }
+                        cmd.isPlaying?.let { isPlaying ->
+                            if (isPlaying != controller.isPlaying) {
+                                if (isPlaying) controller.play() else controller.pause()
+                            }
+                        }
+                        cmd.position?.let { pos ->
+                            if (Math.abs(controller.currentPosition - pos) > 2000) {
+                                controller.seekTo(pos)
                             }
                         }
                     }
@@ -370,7 +400,11 @@ class MediaServerService : Service(), KoinComponent {
     private suspend fun getSerializedState(): String? = withContext(Dispatchers.Main) {
         val controller = mediaController ?: return@withContext null
         val currentItem = controller.currentMediaItem
-        val songId = currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+        val songId = if (RemoteSyncState.target == MediaServerPlaybackTarget.WEB) {
+            webSongId ?: currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+        } else {
+            currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+        }
         val song = songId?.let { id ->
             try {
                 songRepository.song(id)

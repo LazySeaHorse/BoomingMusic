@@ -148,7 +148,7 @@ class RealSongRepository(
     override suspend fun songsByMediaItems(mediaItems: List<MediaItem>): Pair<List<Song>, List<MediaItem>> {
         if (mediaItems.isEmpty()) return (emptyList<Song>() to mediaItems)
 
-        val ids = mediaItems.map { it.mediaId }
+        val ids = mediaItems.map { it.mediaId.split(":").lastOrNull() ?: it.mediaId }
         val allSongs = buildList {
             ids.chunked(900).forEach { chunk ->
                 val selection = "${AudioColumns._ID} IN (${chunk.joinToString(",") { "?" }})"
@@ -159,10 +159,14 @@ class RealSongRepository(
 
         val songMap = allSongs.associateBy { it.id.toString() }
         val (found, missing) = mediaItems.partition { item ->
-            songMap[item.mediaId]?.takeIf { it != Song.emptySong } != null
+            val realId = item.mediaId.split(":").lastOrNull() ?: item.mediaId
+            songMap[realId]?.takeIf { it != Song.emptySong } != null
         }
 
-        val resultSongs = found.mapNotNull { songMap[it.mediaId] }
+        val resultSongs = found.mapNotNull { item ->
+            val realId = item.mediaId.split(":").lastOrNull() ?: item.mediaId
+            songMap[realId]
+        }
         return resultSongs to missing
     }
 
