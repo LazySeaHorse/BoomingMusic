@@ -3,6 +3,7 @@
  */
 
 import { updatePlayPauseButton, updateActiveTrack, updateNowPlaying } from './ui.js';
+import { trackListState } from './trackList.js';
 import { cycleTheme } from './theme.js';
 import { remoteState, sendCommand } from './remote.js';
 
@@ -12,7 +13,10 @@ export const playerState = {
     shuffleEnabled: false,
     shuffleID: 0,
     shuffleIndex: 0,
-    repeatMode: 'off' // 'off', 'all', 'one'
+    repeatMode: 'off', // 'off', 'all', 'one'
+    // Incremented each time a new src is loaded; lets async handlers
+    // detect whether their load is still the current one.
+    loadGeneration: 0
 };
 
 export function initPlayer() {
@@ -21,27 +25,41 @@ export function initPlayer() {
 }
 
 export function playSong(song, filteredSongs) {
+    // Always update now-playing display optimistically — on both phone and web targets.
+    // The WebSocket state push will confirm/correct it, but the UI should feel instant.
+    playerState.currentSong = song;
+    updateNowPlaying(song);
+    const songIndex = filteredSongs
+        ? filteredSongs.findIndex(s => s.id === song.id)
+        : -1;
+    if (songIndex !== -1) updateActiveTrack(songIndex);
+
     if (remoteState.target === 'phone' && !remoteState.isUpdatingLocal) {
+        // Phone is the playback device — just tell it to play this song.
         sendCommand({ type: 'SELECT', id: song.id });
         return;
     }
-    
-    playerState.currentSong = song;
-    updateNowPlaying(song);
-    
+
     // Cycle to next theme when a new song plays
     cycleTheme();
-    
+
+    // Bump generation so any stale async callbacks from a previous load can bail.
+    const gen = ++playerState.loadGeneration;
+
     // For dummy songs, use a silent data URL so the player doesn't error
     if (song.path.startsWith('dummy')) {
-        // Minimal WAV file (silent, ~5 seconds)
         const silentWav = 'data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==';
         playerState.player.src = silentWav;
     } else {
         playerState.player.src = `/stream/${song.path}`;
     }
-    playerState.player.load();
-    playerState.player.play();
+    // DO NOT call player.load() here — it races with play() and causes an AbortError.
+    // Setting src is sufficient; play() will trigger loading automatically.
+    playerState.player.play().catch(e => {
+        // AbortError is expected if another song is loaded before this one starts.
+        // Any other error is worth logging.
+        if (e.name !== 'AbortError') console.error('playSong play() error:', e);
+    });
 }
 
 export function playNext(filteredSongs) {

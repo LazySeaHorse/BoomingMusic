@@ -2,7 +2,7 @@
  * Events module - centralized event listener setup
  */
 
-import { togglePlayPause, playNext, playPrevious, toggleShuffle, toggleRepeat } from './player.js';
+import { togglePlayPause, playNext, playPrevious, toggleShuffle, toggleRepeat, playSong } from './player.js';
 import { handleSearch, clearSearch, handleSort, loadSongs, initClusterize } from './trackList.js';
 import { setLyricsMode } from './lyrics.js';
 import { toggleSortMenu, openSettings, closeSettings, openFullscreenPlayer, closeFullscreenPlayer, updateModeIndicator } from './ui.js';

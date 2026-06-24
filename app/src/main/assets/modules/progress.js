@@ -14,9 +14,28 @@ export function initProgress() {
     const progressBar = document.getElementById('progress-bar');
     const fsProgressBar = document.getElementById('fullscreen-progress-bar');
 
-    // Desktop progress bar
+    // Desktop progress bar (mouse)
     progressBar.addEventListener('mousedown', startSeeking);
     progressBar.addEventListener('click', seek);
+
+    // Desktop progress bar (touch)
+    progressBar.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        progressState.isSeeking = true;
+        progressBar.classList.add('seeking');
+        seekTouch(e);
+
+        const onTouchMove = (e) => { e.preventDefault(); seekTouch(e); };
+        const onTouchEnd = () => {
+            progressState.isSeeking = false;
+            progressBar.classList.remove('seeking');
+            document.removeEventListener('touchmove', onTouchMove);
+            document.removeEventListener('touchend', onTouchEnd);
+        };
+
+        document.addEventListener('touchmove', onTouchMove);
+        document.addEventListener('touchend', onTouchEnd);
+    }, { passive: false });
 
     // Fullscreen progress bar (mouse)
     fsProgressBar.addEventListener('mousedown', (e) => {
@@ -59,6 +78,23 @@ export function initProgress() {
     // Player time update
     playerState.player.addEventListener('timeupdate', updateProgress);
     playerState.player.addEventListener('loadedmetadata', updateProgress);
+}
+
+function seekTouch(e) {
+    const progressBar = document.getElementById('progress-bar');
+    const touch = e.touches[0];
+    const rect = progressBar.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+
+    if (remoteState.target === 'phone') {
+        const duration = remoteState.song ? remoteState.song.duration : 0;
+        if (duration > 0) {
+            sendCommand({ type: 'SEEK', position: Math.floor(percent * duration) });
+        }
+    } else if (playerState.player.duration) {
+        playerState.player.currentTime = percent * playerState.player.duration;
+        updateProgress();
+    }
 }
 
 function startSeeking(e) {
@@ -129,6 +165,10 @@ function seekFullscreenTouch(e) {
 }
 
 export function updateProgress() {
+    // In phone mode the progress bar is owned by the clock-based fake seek in remote.js.
+    // Don't let the idle local player's timeupdate (currentTime = 0) clobber those values.
+    if (remoteState.target === 'phone') return;
+
     if (!progressState.isSeeking && playerState.player.duration) {
         const percent = (playerState.player.currentTime / playerState.player.duration) * 100;
         const progressFill = document.getElementById('progress-fill');

@@ -158,31 +158,49 @@ function handleStateUpdate(msg) {
     } else if (state.target === 'web') {
         // BROWSER IS THE ACTIVE PLAYER
         stopFakeSeek();
-        
+
         if (state.song) {
             const localSongId = playerState.currentSong ? playerState.currentSong.id : null;
             if (localSongId !== state.song.id) {
+                // Mark that the next play/pause events are our own sync, not user action.
+                // We pin the generation before playSong bumps it, then clear the flag
+                // once the audio element actually starts playing for THAT generation.
                 remoteState.isUpdatingLocal = true;
+                const expectedGen = playerState.loadGeneration + 1; // playSong will bump to this
                 playSong(state.song, trackListState.filteredSongs);
-                remoteState.isUpdatingLocal = false;
+                // Clear isUpdatingLocal when this specific load begins playing
+                const clearWhenReady = () => {
+                    if (playerState.loadGeneration === expectedGen) {
+                        remoteState.isUpdatingLocal = false;
+                    }
+                    playerState.player.removeEventListener('play', clearWhenReady);
+                    playerState.player.removeEventListener('error', clearWhenReady);
+                };
+                playerState.player.addEventListener('play', clearWhenReady);
+                playerState.player.addEventListener('error', clearWhenReady);
             }
-            
+
             if (playerState.player) {
                 if (state.isPlaying && playerState.player.paused) {
                     remoteState.isUpdatingLocal = true;
-                    playerState.player.play().catch(e => console.log(e));
-                    remoteState.isUpdatingLocal = false;
+                    playerState.player.play()
+                        .then(() => { remoteState.isUpdatingLocal = false; })
+                        .catch(e => {
+                            remoteState.isUpdatingLocal = false;
+                            if (e.name !== 'AbortError') console.log(e);
+                        });
                 } else if (!state.isPlaying && !playerState.player.paused) {
                     remoteState.isUpdatingLocal = true;
                     playerState.player.pause();
                     remoteState.isUpdatingLocal = false;
                 }
-                
+
                 const diff = Math.abs(playerState.player.currentTime * 1000 - state.position);
                 if (diff > 2000) {
                     remoteState.isUpdatingLocal = true;
                     playerState.player.currentTime = state.position / 1000;
-                    remoteState.isUpdatingLocal = false;
+                    // 'seeked' fires synchronously in most browsers, so clear after a tick
+                    setTimeout(() => { remoteState.isUpdatingLocal = false; }, 0);
                 }
             }
         }
