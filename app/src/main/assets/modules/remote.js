@@ -178,29 +178,29 @@ function handleStateUpdate(msg) {
                 };
                 playerState.player.addEventListener('play', clearWhenReady);
                 playerState.player.addEventListener('error', clearWhenReady);
-            }
+            } else {
+                if (playerState.player) {
+                    if (state.isPlaying && playerState.player.paused) {
+                        remoteState.isUpdatingLocal = true;
+                        playerState.player.play()
+                            .then(() => { remoteState.isUpdatingLocal = false; })
+                            .catch(e => {
+                                remoteState.isUpdatingLocal = false;
+                                if (e.name !== 'AbortError') console.log(e);
+                            });
+                    } else if (!state.isPlaying && !playerState.player.paused) {
+                        remoteState.isUpdatingLocal = true;
+                        playerState.player.pause();
+                        remoteState.isUpdatingLocal = false;
+                    }
 
-            if (playerState.player) {
-                if (state.isPlaying && playerState.player.paused) {
-                    remoteState.isUpdatingLocal = true;
-                    playerState.player.play()
-                        .then(() => { remoteState.isUpdatingLocal = false; })
-                        .catch(e => {
-                            remoteState.isUpdatingLocal = false;
-                            if (e.name !== 'AbortError') console.log(e);
-                        });
-                } else if (!state.isPlaying && !playerState.player.paused) {
-                    remoteState.isUpdatingLocal = true;
-                    playerState.player.pause();
-                    remoteState.isUpdatingLocal = false;
-                }
-
-                const diff = Math.abs(playerState.player.currentTime * 1000 - state.position);
-                if (diff > 2000) {
-                    remoteState.isUpdatingLocal = true;
-                    playerState.player.currentTime = state.position / 1000;
-                    // 'seeked' fires synchronously in most browsers, so clear after a tick
-                    setTimeout(() => { remoteState.isUpdatingLocal = false; }, 0);
+                    const diff = Math.abs(playerState.player.currentTime * 1000 - state.position);
+                    if (diff > 2000) {
+                        remoteState.isUpdatingLocal = true;
+                        playerState.player.currentTime = state.position / 1000;
+                        // 'seeked' fires synchronously in most browsers, so clear after a tick
+                        setTimeout(() => { remoteState.isUpdatingLocal = false; }, 0);
+                    }
                 }
             }
         }

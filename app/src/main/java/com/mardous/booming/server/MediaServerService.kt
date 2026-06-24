@@ -349,7 +349,8 @@ class MediaServerService : Service(), KoinComponent {
                         }
                         cmd.id?.let { songId ->
                             val currentItem = controller.currentMediaItem
-                            if (currentItem?.mediaId != songId.toString()) {
+                            val currentSongId = currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
+                            if (currentSongId != songId) {
                                 try {
                                     val song = songRepository.song(songId)
                                     controller.setMediaItem(song.toMediaItem())
@@ -369,7 +370,7 @@ class MediaServerService : Service(), KoinComponent {
     private suspend fun getSerializedState(): String? = withContext(Dispatchers.Main) {
         val controller = mediaController ?: return@withContext null
         val currentItem = controller.currentMediaItem
-        val songId = currentItem?.mediaId?.toLongOrNull()
+        val songId = currentItem?.mediaId?.split(":")?.lastOrNull()?.toLongOrNull()
         val song = songId?.let { id ->
             try {
                 songRepository.song(id)

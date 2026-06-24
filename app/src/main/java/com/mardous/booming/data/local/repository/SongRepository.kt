@@ -170,10 +170,11 @@ class RealSongRepository(
         if (mediaItem != null) {
             var song = mediaItem.localConfiguration?.tag
             if (song == null || song !is Song) {
+                val realId = mediaItem.mediaId.split(":").lastOrNull() ?: mediaItem.mediaId
                 song = song(
                     makeSongCursor(
                         selection = "${AudioColumns._ID}=?",
-                        selectionValues = arrayOf(mediaItem.mediaId)
+                        selectionValues = arrayOf(realId)
                     )
                 )
             }
